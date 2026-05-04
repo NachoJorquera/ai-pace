@@ -138,6 +138,38 @@ struct UsageStoreTests {
 
     @Test
     @MainActor
+    func refreshDoesNotNotifyWhenUnusedCodexWindowSlidesForward() async {
+        let suiteName = UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let key = UsageWindowKey(provider: .codex, kind: .fiveHour)
+        defaults.set([key.storageKey], forKey: "refreshNotificationKeys")
+
+        let previousReset = Date(timeIntervalSince1970: 1_000)
+        let currentReset = previousReset.addingTimeInterval(600)
+        let notificationManager = NotificationManagerSpy()
+        let store = UsageStore(
+            claudeProbe: ProbeStub(queue: ProbeQueue([
+                makeSnapshot(.claude, fiveHourUsed: 10, weeklyUsed: 20),
+            ])),
+            codexProbe: ProbeStub(queue: ProbeQueue([
+                makeSnapshot(.codex, fiveHourUsed: 0, weeklyUsed: 0, fiveHourReset: currentReset, weeklyReset: currentReset),
+            ])),
+            notificationManager: notificationManager,
+            userDefaults: defaults,
+            startRefreshLoop: false
+        )
+        store.codex = makeSnapshot(.codex, fiveHourUsed: 0, weeklyUsed: 0, fiveHourReset: previousReset, weeklyReset: previousReset)
+
+        await store.refresh()
+
+        #expect(notificationManager.sentKeys.isEmpty)
+        #expect(notificationManager.sentSounds.isEmpty)
+    }
+
+    @Test
+    @MainActor
     func setRefreshNotificationsEnabledPersistsOnlyWhenAuthorized() async {
         let suiteName = UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
