@@ -241,6 +241,11 @@ final class UsageStore: ObservableObject {
         guard let previousReset = previous.resetsAt, let currentReset = current.resetsAt else {
             return
         }
+        guard let previousUsed = previous.usedPercentage,
+              let currentUsed = current.usedPercentage,
+              previousUsed > currentUsed else {
+            return
+        }
         guard currentReset.timeIntervalSince(previousReset) > 60 else {
             return
         }
