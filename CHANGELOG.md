@@ -10,6 +10,8 @@ The format is based on Keep a Changelog, and this project follows semantic versi
 - Token refresh no longer deletes the Claude Code Keychain credentials (the previous save path removed the item and the re-add silently failed), which logged users out of Claude Code daily
 - Credential writes now preserve all stored fields (`scopes`, `refreshTokenExpiresAt`, `rateLimitTier`, `mcpOAuth`) instead of dropping them
 - Token refresh requests the originally granted OAuth scopes instead of a hardcoded subset
+- Token refresh is skipped when the refreshed credentials could not be saved, so a failed write no longer invalidates the stored token; the reason is shown in the popover instead of failing silently
+- Keychain credentials whose account contains non-ASCII characters are now read correctly, so those accounts can be updated too
 
 ## [1.1.2] - 2026-04-25
 
