@@ -186,6 +186,75 @@ struct ClaudeCredentialLoaderTests {
     }
 
     @Test
+    func saveToKeychainRoundTripPreservesItemAndAccount() throws {
+        let service = "aipace-test-\(UUID().uuidString)"
+        defer {
+            _ = try? ProcessRunner.runSync(
+                executable: "/usr/bin/security",
+                arguments: ["delete-generic-password", "-s", service],
+                input: nil,
+                timeout: 10,
+                currentDirectory: nil
+            )
+        }
+
+        let seedJSON = """
+        {"mcpOAuth": {"srv": {"accessToken": "mcp-1"}}, "claudeAiOauth": {"accessToken": "old", "refreshToken": "old-r", "expiresAt": 1, "refreshTokenExpiresAt": 2, "scopes": ["user:inference"], "subscriptionType": "team", "rateLimitTier": "tier-1"}}
+        """
+        _ = try ProcessRunner.runSync(
+            executable: "/usr/bin/security",
+            arguments: ["add-generic-password", "-s", service, "-a", "test-account", "-w", seedJSON],
+            input: nil,
+            timeout: 10,
+            currentDirectory: nil
+        )
+
+        let homeDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: homeDirectory) }
+        let loader = ClaudeCredentialLoader(
+            homeDirectory: homeDirectory,
+            environment: [:],
+            keychainService: service
+        )
+
+        let loaded = try #require(loader.loadCredentials())
+        #expect(loaded.source == .keychain)
+        #expect(loaded.keychainAccount == "test-account")
+
+        var updated = loaded
+        updated.oauth.accessToken = "new-token"
+        updated.oauth.refreshToken = "new-refresh"
+        updated.oauth.expiresAt = 999
+        loader.saveCredentials(updated)
+
+        let rawSecret = try ProcessRunner.runSync(
+            executable: "/usr/bin/security",
+            arguments: ["find-generic-password", "-s", service, "-w"],
+            input: nil,
+            timeout: 10,
+            currentDirectory: nil
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        let root = try #require(JSONSerialization.jsonObject(with: Data(rawSecret.utf8)) as? [String: Any])
+        let oauth = try #require(root["claudeAiOauth"] as? [String: Any])
+
+        #expect(root["mcpOAuth"] != nil)
+        #expect(oauth["accessToken"] as? String == "new-token")
+        #expect(oauth["refreshToken"] as? String == "new-refresh")
+        #expect(oauth["refreshTokenExpiresAt"] as? Int == 2)
+        #expect(oauth["scopes"] as? [String] == ["user:inference"])
+        #expect(oauth["rateLimitTier"] as? String == "tier-1")
+
+        let attributes = try ProcessRunner.runSync(
+            executable: "/usr/bin/security",
+            arguments: ["find-generic-password", "-s", service],
+            input: nil,
+            timeout: 10,
+            currentDirectory: nil
+        )
+        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: attributes) == "test-account")
+    }
+
+    @Test
     func mapKeychainErrorCategorizesCommonFailures() throws {
         let loader = ClaudeCredentialLoader(
             homeDirectory: try makeTemporaryDirectory(),

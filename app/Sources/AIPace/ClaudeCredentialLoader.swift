@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 struct ClaudeOAuthCredentials: Sendable, Equatable {
     var accessToken: String
@@ -47,6 +48,7 @@ struct ClaudeCredentialLoader {
     private let keychainLoadOverride: Result<ClaudeCredentialResult?, ClaudeCredentialLoadIssue>?
     private let keychainSaveOverride: (@Sendable (ClaudeCredentialResult) -> Void)?
     private static let refreshBufferMs: Double = 5 * 60 * 1000
+    private static let logger = Logger(subsystem: "com.aipace.app", category: "Credentials")
 
     init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -227,27 +229,37 @@ struct ClaudeCredentialLoader {
 
         guard
             let root = updatedFullData(for: result),
-            let data = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted]),
-            let json = String(data: data, encoding: .utf8)
+            let data = try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
         else {
+            Self.logger.error("Could not serialize credential blob for keychain save.")
             return
         }
 
-        _ = try? ProcessRunner.runSync(
-            executable: "/usr/bin/security",
-            arguments: ["delete-generic-password", "-s", keychainService],
-            input: nil,
-            timeout: 10,
-            currentDirectory: nil
-        )
+        let account = sanitizedKeychainAccount(result.keychainAccount) ?? NSUserName()
+        let hexPayload = data.map { String(format: "%02x", $0) }.joined()
+        let command = "add-generic-password -U -s \"\(keychainService)\" -a \"\(account)\" -X \(hexPayload)\n"
 
-        _ = try? ProcessRunner.runSync(
-            executable: "/usr/bin/security",
-            arguments: ["add-generic-password", "-s", keychainService, "-w", json],
-            input: nil,
-            timeout: 10,
-            currentDirectory: nil
-        )
+        do {
+            _ = try ProcessRunner.runSync(
+                executable: "/usr/bin/security",
+                arguments: ["-i"],
+                input: command,
+                timeout: 10,
+                currentDirectory: nil
+            )
+        } catch {
+            Self.logger.error("Keychain credential save failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    private func sanitizedKeychainAccount(_ account: String?) -> String? {
+        guard let account, !account.isEmpty else {
+            return nil
+        }
+        guard !account.contains("\""), !account.contains("\\"), !account.contains("\n") else {
+            return nil
+        }
+        return account
     }
 
     private func updatedFullData(for result: ClaudeCredentialResult) -> [String: Any]? {
