@@ -320,12 +320,18 @@ struct ClaudeCredentialLoader {
     }
 
     static func parseKeychainAccount(from attributesOutput: String) -> String? {
+        let prefix = "\"acct\"<blob>="
         for line in attributesOutput.split(separator: "\n") {
             let trimmedLine = line.trimmingCharacters(in: .whitespaces)
-            guard trimmedLine.hasPrefix("\"acct\"<blob>=") else {
+            guard trimmedLine.hasPrefix(prefix) else {
                 continue
             }
-            let value = trimmedLine.dropFirst("\"acct\"<blob>=".count)
+            let value = trimmedLine.dropFirst(prefix.count)
+            // `security` switches to `0x<hex>  "escaped"` whenever the account holds a non-ASCII byte,
+            // so the hex form is the only readable rendering for those accounts.
+            if value.hasPrefix("0x") {
+                return decodeHexBlob(value.dropFirst(2))
+            }
             guard value.hasPrefix("\""), value.hasSuffix("\""), value.count >= 2 else {
                 return nil
             }
@@ -333,6 +339,33 @@ struct ClaudeCredentialLoader {
             return account.isEmpty ? nil : account
         }
         return nil
+    }
+
+    private static func decodeHexBlob(_ value: Substring) -> String? {
+        let digits = value.prefix { $0.isHexDigit }
+        guard !digits.isEmpty, digits.count % 2 == 0 else {
+            return nil
+        }
+
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(digits.count / 2)
+        var index = digits.startIndex
+        while index < digits.endIndex {
+            let next = digits.index(index, offsetBy: 2)
+            guard let byte = UInt8(digits[index ..< next], radix: 16) else {
+                return nil
+            }
+            bytes.append(byte)
+            index = next
+        }
+        while bytes.last == 0 {
+            bytes.removeLast()
+        }
+
+        guard let account = String(bytes: bytes, encoding: .utf8), !account.isEmpty else {
+            return nil
+        }
+        return account
     }
 
     func mapKeychainError(_ error: ProcessRunnerError) -> Result<ClaudeCredentialResult?, ClaudeCredentialLoadIssue> {

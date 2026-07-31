@@ -174,6 +174,54 @@ struct ClaudeCredentialLoaderTests {
     }
 
     @Test
+    func parseKeychainAccountDecodesHexRenderedAccount() {
+        // `security` renders any account holding a non-ASCII byte as 0x<hex> plus an escaped copy.
+        let output = """
+        attributes:
+            "acct"<blob>=0x74C3A97374206E69C3B16F  "t\\303\\251st ni\\303\\261o"
+            "svce"<blob>="Claude Code-credentials"
+        """
+
+        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: output) == "tést niño")
+    }
+
+    @Test
+    func parseKeychainAccountDecodesMultiByteHexAccount() {
+        // Emoji and CJK accounts are 3 and 4 byte UTF-8 sequences.
+        let output = """
+        attributes:
+            "acct"<blob>=0xE4B8ADE69687F09F9880  "\\344\\270\\255\\346\\226\\207\\360\\237\\230\\200"
+        """
+
+        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: output) == "中文😀")
+    }
+
+    @Test
+    func parseKeychainAccountKeepsQuotedAndRejectsMalformedForms() {
+        let quotedWithSpaces = """
+        attributes:
+            "acct"<blob>="my account"
+        """
+        let embeddedSubstring = """
+        attributes:
+            "svce"<blob>="\\"acct\\"<blob>=\\"spoofed\\""
+        """
+        let emptyQuoted = """
+        attributes:
+            "acct"<blob>=""
+        """
+        let oddHex = """
+        attributes:
+            "acct"<blob>=0xABC  "junk"
+        """
+
+        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: quotedWithSpaces) == "my account")
+        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: embeddedSubstring) == nil)
+        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: emptyQuoted) == nil)
+        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: oddHex) == nil)
+    }
+
+    @Test
     func parseKeychainAccountHandlesNullAndMissing() {
         let nullOutput = """
         attributes:
