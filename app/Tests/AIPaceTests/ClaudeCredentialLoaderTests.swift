@@ -160,17 +160,17 @@ struct ClaudeCredentialLoaderTests {
     @Test
     func parseKeychainAccountExtractsAcctBlob() {
         let output = """
-        keychain: "/Users/nacho/Library/Keychains/login.keychain-db"
+        keychain: "/Users/user/Library/Keychains/login.keychain-db"
         version: 512
         class: "genp"
         attributes:
             0x00000007 <blob>="Claude Code-credentials"
-            "acct"<blob>="nacho"
+            "acct"<blob>="user"
             "mdat"<timedate>=0x32303236303733313134313031385A00  "20260731141018Z\\000"
             "svce"<blob>="Claude Code-credentials"
         """
 
-        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: output) == "nacho")
+        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: output) == "user")
     }
 
     @Test
