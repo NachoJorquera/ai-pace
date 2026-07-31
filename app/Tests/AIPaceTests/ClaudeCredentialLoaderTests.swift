@@ -234,6 +234,84 @@ struct ClaudeCredentialLoaderTests {
     }
 
     @Test
+    func canPersistRequiresAResolvableKeychainAccount() throws {
+        let homeDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: homeDirectory) }
+
+        // Disposable service with no item behind it: nothing is created, so nothing is left behind.
+        let service = "aipace-test-\(UUID().uuidString)"
+        defer {
+            _ = try? ProcessRunner.runSync(
+                executable: "/usr/bin/security",
+                arguments: ["delete-generic-password", "-s", service],
+                input: nil,
+                timeout: 10,
+                currentDirectory: nil
+            )
+        }
+
+        let loader = ClaudeCredentialLoader(
+            homeDirectory: homeDirectory,
+            environment: [:],
+            keychainService: service
+        )
+        let oauth = ClaudeOAuthCredentials(accessToken: "token", refreshToken: "refresh", expiresAt: 1, subscriptionType: nil)
+
+        let unknownAccount = ClaudeCredentialResult(
+            oauth: oauth,
+            source: .keychain,
+            fullData: [:],
+            keychainAccount: nil
+        )
+        let knownAccount = ClaudeCredentialResult(
+            oauth: oauth,
+            source: .keychain,
+            fullData: [:],
+            keychainAccount: "test-account"
+        )
+        let fileCredentials = ClaudeCredentialResult(oauth: oauth, source: .file, fullData: [:])
+        let environmentCredentials = ClaudeCredentialResult(oauth: oauth, source: .environment, fullData: [:])
+
+        #expect(!loader.canPersist(unknownAccount))
+        #expect(loader.canPersist(knownAccount))
+        #expect(loader.canPersist(fileCredentials))
+        #expect(loader.canPersist(environmentCredentials))
+    }
+
+    @Test
+    func saveCredentialsReportsWhetherTheWriteHappened() throws {
+        let homeDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: homeDirectory) }
+
+        let service = "aipace-test-\(UUID().uuidString)"
+        defer {
+            _ = try? ProcessRunner.runSync(
+                executable: "/usr/bin/security",
+                arguments: ["delete-generic-password", "-s", service],
+                input: nil,
+                timeout: 10,
+                currentDirectory: nil
+            )
+        }
+
+        let loader = ClaudeCredentialLoader(
+            homeDirectory: homeDirectory,
+            environment: [:],
+            keychainService: service
+        )
+        let oauth = ClaudeOAuthCredentials(accessToken: "token", refreshToken: "refresh", expiresAt: 999, subscriptionType: nil)
+
+        #expect(loader.saveCredentials(ClaudeCredentialResult(oauth: oauth, source: .file, fullData: [:])))
+        // No item exists for the service, so the account is unknowable and the write must be reported
+        // as failed instead of silently skipped.
+        #expect(
+            !loader.saveCredentials(
+                ClaudeCredentialResult(oauth: oauth, source: .keychain, fullData: [:], keychainAccount: nil)
+            )
+        )
+    }
+
+    @Test
     func saveToKeychainRoundTripPreservesItemAndAccount() throws {
         let service = "aipace-test-\(UUID().uuidString)"
         defer {

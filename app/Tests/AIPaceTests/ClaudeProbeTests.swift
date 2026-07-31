@@ -2,6 +2,24 @@ import Foundation
 import Testing
 @testable import AIPace
 
+/// Captures what the injected keychain save seam received, without touching a real Keychain.
+private final class SavedCredentialsBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: ClaudeCredentialResult?
+
+    var value: ClaudeCredentialResult? {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored
+    }
+
+    func store(_ result: ClaudeCredentialResult) {
+        lock.lock()
+        defer { lock.unlock() }
+        stored = result
+    }
+}
+
 struct ClaudeProbeTests {
     @Test
     func fetchReturnsUsageSnapshotAndDetailText() async throws {
@@ -168,6 +186,182 @@ struct ClaudeProbeTests {
         let refreshCalls = await state.refreshCalls
         #expect(usageTokens == ["old-token", "new-token"])
         #expect(refreshCalls == 1)
+    }
+
+    @Test
+    func liveRefreshTokenAbortsBeforeNetworkWhenKeychainAccountIsUnknown() async throws {
+        let homeDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: homeDirectory) }
+
+        // Disposable service with no item behind it, so the account is unknowable and the credential is
+        // not persistable. No item is ever created, so nothing is left in the Keychain.
+        let service = "aipace-test-\(UUID().uuidString)"
+        defer {
+            _ = try? ProcessRunner.runSync(
+                executable: "/usr/bin/security",
+                arguments: ["delete-generic-password", "-s", service],
+                input: nil,
+                timeout: 10,
+                currentDirectory: nil
+            )
+        }
+
+        let loader = ClaudeCredentialLoader(
+            homeDirectory: homeDirectory,
+            environment: [:],
+            keychainService: service
+        )
+        let credentials = ClaudeCredentialResult(
+            oauth: ClaudeOAuthCredentials(
+                accessToken: "stored-token",
+                refreshToken: "stored-refresh",
+                expiresAt: 1,
+                subscriptionType: nil
+            ),
+            source: .keychain,
+            fullData: ["claudeAiOauth": ["accessToken": "stored-token"]],
+            keychainAccount: nil
+        )
+
+        #expect(!loader.canPersist(credentials))
+
+        do {
+            // Reaching the network here would rotate the token pair server side and strand the keychain
+            // with a dead refresh token, which is the failure this guard exists to prevent.
+            _ = try await ClaudeProbe.liveRefreshToken(credentials, credentialLoader: loader)
+            Issue.record("Expected the refresh to abort before issuing the network request")
+        } catch let error as ProcessRunnerError {
+            guard case .invalidResponse(let message) = error else {
+                Issue.record("Expected an invalidResponse error, got \(error)")
+                return
+            }
+            #expect(message.contains("Claude token refresh skipped"))
+            #expect(message.contains("log in again"))
+        }
+    }
+
+    @Test
+    func persistRefreshedCredentialsThrowsWhenKeychainWriteFails() throws {
+        let homeDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: homeDirectory) }
+
+        let loader = ClaudeCredentialLoader(
+            homeDirectory: homeDirectory,
+            environment: [:],
+            keychainLoadOverride: .success(nil),
+            keychainSaveOverride: { _ in false }
+        )
+        let credentials = ClaudeCredentialResult(
+            oauth: ClaudeOAuthCredentials(
+                accessToken: "stored-token",
+                refreshToken: "stored-refresh",
+                expiresAt: 1,
+                subscriptionType: nil
+            ),
+            source: .keychain,
+            fullData: ["claudeAiOauth": ["accessToken": "stored-token"]],
+            keychainAccount: "test-account"
+        )
+
+        do {
+            _ = try ClaudeProbe.persistRefreshedCredentials(
+                ClaudeRefreshResponse(accessToken: "new-token", refreshToken: "new-refresh", expiresIn: 3600),
+                into: credentials,
+                credentialLoader: loader
+            )
+            Issue.record("Expected a failed write to surface as an error")
+        } catch let error as ProcessRunnerError {
+            guard case .invalidResponse(let message) = error else {
+                Issue.record("Expected an invalidResponse error, got \(error)")
+                return
+            }
+            #expect(message.contains("could not be saved"))
+        }
+    }
+
+    @Test
+    func persistRefreshedCredentialsReturnsUpdatedCredentialsWhenWriteSucceeds() throws {
+        let homeDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: homeDirectory) }
+
+        let saved = SavedCredentialsBox()
+        let loader = ClaudeCredentialLoader(
+            homeDirectory: homeDirectory,
+            environment: [:],
+            keychainLoadOverride: .success(nil),
+            keychainSaveOverride: { result in
+                saved.store(result)
+                return true
+            }
+        )
+        let credentials = ClaudeCredentialResult(
+            oauth: ClaudeOAuthCredentials(
+                accessToken: "stored-token",
+                refreshToken: "stored-refresh",
+                expiresAt: 1,
+                subscriptionType: nil
+            ),
+            source: .keychain,
+            fullData: ["claudeAiOauth": ["accessToken": "stored-token"]],
+            keychainAccount: "test-account"
+        )
+
+        let updated = try ClaudeProbe.persistRefreshedCredentials(
+            ClaudeRefreshResponse(accessToken: "new-token", refreshToken: "new-refresh", expiresIn: 3600),
+            into: credentials,
+            credentialLoader: loader
+        )
+
+        #expect(updated.oauth.accessToken == "new-token")
+        #expect(updated.oauth.refreshToken == "new-refresh")
+        #expect((updated.oauth.expiresAt ?? 0) > Date().timeIntervalSince1970 * 1000)
+        #expect(saved.value?.oauth.accessToken == "new-token")
+        #expect(saved.value?.oauth.refreshToken == "new-refresh")
+    }
+
+    @Test
+    func refreshErrorSurfacesInProviderSnapshotMessage() async throws {
+        let homeDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: homeDirectory) }
+
+        let credentialsURL = homeDirectory.appendingPathComponent(".claude/.credentials.json")
+        try FileManager.default.createDirectory(at: credentialsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(
+            """
+            {
+              "claudeAiOauth": {
+                "accessToken": "expired-token",
+                "refreshToken": "refresh-token",
+                "expiresAt": 1
+              }
+            }
+            """.utf8
+        ).write(to: credentialsURL)
+
+        let loader = ClaudeCredentialLoader(
+            homeDirectory: homeDirectory,
+            environment: [:],
+            keychainLoadOverride: .success(nil)
+        )
+        let apiClient = ClaudeAPIClient(
+            fetchStatus: { ClaudeAuthStatus(loggedIn: nil) },
+            refreshToken: { _, _ in
+                throw ProcessRunnerError.invalidResponse("Claude token was refreshed but could not be saved.")
+            },
+            fetchUsage: { _ in
+                Issue.record("fetchUsage should not be called when the refresh failed")
+                return ClaudeUsageResponse(fiveHour: nil, sevenDay: nil)
+            }
+        )
+
+        let snapshot = await ClaudeProbe(
+            credentialLoader: loader,
+            accountInfoResolver: ClaudeAccountInfoResolver(configURL: homeDirectory.appendingPathComponent(".missing")),
+            apiClient: apiClient
+        ).fetch()
+
+        #expect(snapshot.fiveHour.message == "Claude token was refreshed but could not be saved.")
+        #expect(snapshot.weekly.message == snapshot.fiveHour.message)
     }
 
     @Test

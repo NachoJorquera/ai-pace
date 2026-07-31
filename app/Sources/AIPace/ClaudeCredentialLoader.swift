@@ -46,7 +46,7 @@ struct ClaudeCredentialLoader {
     private let environment: [String: String]
     private let keychainService: String
     private let keychainLoadOverride: Result<ClaudeCredentialResult?, ClaudeCredentialLoadIssue>?
-    private let keychainSaveOverride: (@Sendable (ClaudeCredentialResult) -> Void)?
+    private let keychainSaveOverride: (@Sendable (ClaudeCredentialResult) -> Bool)?
     private static let refreshBufferMs: Double = 5 * 60 * 1000
     private static let logger = Logger(subsystem: "com.aipace.app", category: "Credentials")
 
@@ -55,7 +55,7 @@ struct ClaudeCredentialLoader {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         keychainService: String = "Claude Code-credentials",
         keychainLoadOverride: Result<ClaudeCredentialResult?, ClaudeCredentialLoadIssue>? = nil,
-        keychainSaveOverride: (@Sendable (ClaudeCredentialResult) -> Void)? = nil
+        keychainSaveOverride: (@Sendable (ClaudeCredentialResult) -> Bool)? = nil
     ) {
         self.homeDirectory = homeDirectory
         self.environment = environment
@@ -98,14 +98,38 @@ struct ClaudeCredentialLoader {
         return nowMs + Self.refreshBufferMs >= expiresAt
     }
 
-    func saveCredentials(_ result: ClaudeCredentialResult) {
+    /// Whether a later `saveCredentials(_:)` for this credential has somewhere to write.
+    ///
+    /// A refresh rotates the token pair server side, so the stored refresh token dies the instant the
+    /// refresh request succeeds. Callers must check this *before* refreshing: refreshing without a
+    /// writable destination logs the user out of Claude Code with no way back.
+    func canPersist(_ result: ClaudeCredentialResult) -> Bool {
         switch result.source {
         case .file:
-            saveToFile(result)
-        case .keychain:
-            saveToKeychain(result)
+            return true
         case .environment:
-            return
+            // Environment credentials are never persisted, and they never refresh either.
+            return true
+        case .keychain:
+            if keychainSaveOverride != nil {
+                // The injected seam replaces the real Keychain write.
+                return true
+            }
+            return resolvedKeychainAccount(result.keychainAccount) != nil
+        }
+    }
+
+    /// Returns whether the credential was actually written, so a caller that has already rotated the
+    /// token pair can surface the failure instead of leaving a dead token behind in silence.
+    @discardableResult
+    func saveCredentials(_ result: ClaudeCredentialResult) -> Bool {
+        switch result.source {
+        case .file:
+            return saveToFile(result)
+        case .keychain:
+            return saveToKeychain(result)
+        case .environment:
+            return true
         }
     }
 
@@ -202,22 +226,29 @@ struct ClaudeCredentialLoader {
         )
     }
 
-    private func saveToFile(_ result: ClaudeCredentialResult) {
+    private func saveToFile(_ result: ClaudeCredentialResult) -> Bool {
         let url = credentialsFileURL()
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard let root = updatedFullData(for: result) else {
-            return
+        guard
+            let root = updatedFullData(for: result),
+            let data = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
+        else {
+            Self.logger.error("Could not serialize credential blob for file save.")
+            return false
         }
-        guard let data = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]) else {
-            return
+
+        do {
+            try data.write(to: url, options: .atomic)
+            return true
+        } catch {
+            Self.logger.error("Credential file save failed: \(String(describing: error), privacy: .public)")
+            return false
         }
-        try? data.write(to: url, options: .atomic)
     }
 
-    private func saveToKeychain(_ result: ClaudeCredentialResult) {
+    private func saveToKeychain(_ result: ClaudeCredentialResult) -> Bool {
         if let keychainSaveOverride {
-            keychainSaveOverride(result)
-            return
+            return keychainSaveOverride(result)
         }
 
         guard
@@ -226,12 +257,12 @@ struct ClaudeCredentialLoader {
             let json = String(data: data, encoding: .utf8)
         else {
             Self.logger.error("Could not serialize credential blob for keychain save.")
-            return
+            return false
         }
 
         guard let account = resolvedKeychainAccount(result.keychainAccount) else {
             Self.logger.error("Aborting keychain credential save: could not determine the item account.")
-            return
+            return false
         }
 
         do {
@@ -242,8 +273,10 @@ struct ClaudeCredentialLoader {
                 timeout: 10,
                 currentDirectory: nil
             )
+            return true
         } catch {
             Self.logger.error("Keychain credential save failed: \(String(describing: error), privacy: .public)")
+            return false
         }
     }
 
