@@ -32,6 +32,7 @@ struct ClaudeCredentialResult: @unchecked Sendable {
     var oauth: ClaudeOAuthCredentials
     let source: ClaudeCredentialSource
     var fullData: [String: Any]
+    var keychainAccount: String? = nil
 }
 
 struct ClaudeCredentialResolution {
@@ -145,7 +146,18 @@ struct ClaudeCredentialLoader {
                 return .success(nil)
             }
 
-            return .success(makeCredentialResult(from: root, source: .keychain))
+            guard var result = makeCredentialResult(from: root, source: .keychain) else {
+                return .success(nil)
+            }
+            let attributesOutput = (try? ProcessRunner.runSync(
+                executable: "/usr/bin/security",
+                arguments: ["find-generic-password", "-s", keychainService],
+                input: nil,
+                timeout: 10,
+                currentDirectory: nil
+            )) ?? ""
+            result.keychainAccount = Self.parseKeychainAccount(from: attributesOutput)
+            return .success(result)
         } catch let error as ProcessRunnerError {
             return mapKeychainError(error)
         } catch {
@@ -284,6 +296,22 @@ struct ClaudeCredentialLoader {
         }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    static func parseKeychainAccount(from attributesOutput: String) -> String? {
+        for line in attributesOutput.split(separator: "\n") {
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            guard trimmedLine.hasPrefix("\"acct\"<blob>=") else {
+                continue
+            }
+            let value = trimmedLine.dropFirst("\"acct\"<blob>=".count)
+            guard value.hasPrefix("\""), value.hasSuffix("\""), value.count >= 2 else {
+                return nil
+            }
+            let account = String(value.dropFirst().dropLast())
+            return account.isEmpty ? nil : account
+        }
+        return nil
     }
 
     func mapKeychainError(_ error: ProcessRunnerError) -> Result<ClaudeCredentialResult?, ClaudeCredentialLoadIssue> {

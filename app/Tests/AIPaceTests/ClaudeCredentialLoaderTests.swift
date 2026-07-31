@@ -158,6 +158,34 @@ struct ClaudeCredentialLoaderTests {
     }
 
     @Test
+    func parseKeychainAccountExtractsAcctBlob() {
+        let output = """
+        keychain: "/Users/nacho/Library/Keychains/login.keychain-db"
+        version: 512
+        class: "genp"
+        attributes:
+            0x00000007 <blob>="Claude Code-credentials"
+            "acct"<blob>="nacho"
+            "mdat"<timedate>=0x32303236303733313134313031385A00  "20260731141018Z\\000"
+            "svce"<blob>="Claude Code-credentials"
+        """
+
+        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: output) == "nacho")
+    }
+
+    @Test
+    func parseKeychainAccountHandlesNullAndMissing() {
+        let nullOutput = """
+        attributes:
+            "acct"<blob>=<NULL>
+            "svce"<blob>="Claude Code-credentials"
+        """
+
+        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: nullOutput) == nil)
+        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: "") == nil)
+    }
+
+    @Test
     func mapKeychainErrorCategorizesCommonFailures() throws {
         let loader = ClaudeCredentialLoader(
             homeDirectory: try makeTemporaryDirectory(),
