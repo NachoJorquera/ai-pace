@@ -229,21 +229,23 @@ struct ClaudeCredentialLoader {
 
         guard
             let root = updatedFullData(for: result),
-            let data = try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
+            let data = try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys]),
+            let json = String(data: data, encoding: .utf8)
         else {
             Self.logger.error("Could not serialize credential blob for keychain save.")
             return
         }
 
-        let account = sanitizedKeychainAccount(result.keychainAccount) ?? NSUserName()
-        let hexPayload = data.map { String(format: "%02x", $0) }.joined()
-        let command = "add-generic-password -U -s \"\(keychainService)\" -a \"\(account)\" -X \(hexPayload)\n"
+        guard let account = resolvedKeychainAccount(result.keychainAccount) else {
+            Self.logger.error("Aborting keychain credential save: could not determine the item account.")
+            return
+        }
 
         do {
             _ = try ProcessRunner.runSync(
                 executable: "/usr/bin/security",
-                arguments: ["-i"],
-                input: command,
+                arguments: ["add-generic-password", "-U", "-s", keychainService, "-a", account, "-w", json],
+                input: nil,
                 timeout: 10,
                 currentDirectory: nil
             )
@@ -252,14 +254,22 @@ struct ClaudeCredentialLoader {
         }
     }
 
-    private func sanitizedKeychainAccount(_ account: String?) -> String? {
-        guard let account, !account.isEmpty else {
-            return nil
+    /// `-U` matches the item to update by service *and* account, so a wrong account silently creates
+    /// a duplicate that later loads would read past. Never guess: re-read the account from the live
+    /// item and give up if it is still unknown.
+    private func resolvedKeychainAccount(_ account: String?) -> String? {
+        if let account, !account.isEmpty {
+            return account
         }
-        guard !account.contains("\""), !account.contains("\\"), !account.contains("\n") else {
-            return nil
-        }
-        return account
+
+        let attributesOutput = (try? ProcessRunner.runSync(
+            executable: "/usr/bin/security",
+            arguments: ["find-generic-password", "-s", keychainService],
+            input: nil,
+            timeout: 10,
+            currentDirectory: nil
+        )) ?? ""
+        return Self.parseKeychainAccount(from: attributesOutput)
     }
 
     private func updatedFullData(for result: ClaudeCredentialResult) -> [String: Any]? {
