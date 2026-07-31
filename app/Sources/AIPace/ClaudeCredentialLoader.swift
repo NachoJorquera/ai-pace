@@ -151,14 +151,7 @@ struct ClaudeCredentialLoader {
             guard var result = makeCredentialResult(from: root, source: .keychain) else {
                 return .success(nil)
             }
-            let attributesOutput = (try? ProcessRunner.runSync(
-                executable: "/usr/bin/security",
-                arguments: ["find-generic-password", "-s", keychainService],
-                input: nil,
-                timeout: 10,
-                currentDirectory: nil
-            )) ?? ""
-            result.keychainAccount = Self.parseKeychainAccount(from: attributesOutput)
+            result.keychainAccount = keychainAccountFromLiveItem()
             return .success(result)
         } catch let error as ProcessRunnerError {
             return mapKeychainError(error)
@@ -262,6 +255,12 @@ struct ClaudeCredentialLoader {
             return account
         }
 
+        return keychainAccountFromLiveItem()
+    }
+
+    /// Single place that reads the `acct` attribute off the live item, so the parsing rules can never
+    /// drift between the load path and the save path.
+    private func keychainAccountFromLiveItem() -> String? {
         let attributesOutput = (try? ProcessRunner.runSync(
             executable: "/usr/bin/security",
             arguments: ["find-generic-password", "-s", keychainService],
