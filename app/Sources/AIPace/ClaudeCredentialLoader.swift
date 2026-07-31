@@ -5,6 +5,7 @@ struct ClaudeOAuthCredentials: Sendable, Equatable {
     var refreshToken: String?
     var expiresAt: Double?
     var subscriptionType: String?
+    var scopes: [String]? = nil
 }
 
 enum ClaudeCredentialSource: Sendable, Equatable {
@@ -186,7 +187,8 @@ struct ClaudeCredentialLoader {
                 accessToken: accessToken,
                 refreshToken: trimmed(oauth["refreshToken"] as? String),
                 expiresAt: parseExpiresAt(oauth["expiresAt"]),
-                subscriptionType: trimmed(oauth["subscriptionType"] as? String)
+                subscriptionType: trimmed(oauth["subscriptionType"] as? String),
+                scopes: parseScopes(oauth["scopes"])
             ),
             source: source,
             fullData: root
@@ -266,6 +268,14 @@ struct ClaudeCredentialLoader {
         default:
             return nil
         }
+    }
+
+    private func parseScopes(_ value: Any?) -> [String]? {
+        guard let array = value as? [Any] else {
+            return nil
+        }
+        let scopes = array.compactMap { $0 as? String }
+        return scopes.isEmpty ? nil : scopes
     }
 
     private func trimmed(_ value: String?) -> String? {

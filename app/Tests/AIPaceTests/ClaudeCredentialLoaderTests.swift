@@ -17,7 +17,8 @@ struct ClaudeCredentialLoaderTests {
                 "accessToken": " file-token ",
                 "refreshToken": " refresh-token ",
                 "expiresAt": "12345",
-                "subscriptionType": " pro "
+                "subscriptionType": " pro ",
+                "scopes": ["user:inference", "user:mcp_servers"]
               }
             }
             """.utf8
@@ -36,6 +37,7 @@ struct ClaudeCredentialLoaderTests {
         #expect(resolution.credentials?.oauth.refreshToken == "refresh-token")
         #expect(resolution.credentials?.oauth.expiresAt == 12345)
         #expect(resolution.credentials?.oauth.subscriptionType == "pro")
+        #expect(resolution.credentials?.oauth.scopes == ["user:inference", "user:mcp_servers"])
     }
 
     @Test

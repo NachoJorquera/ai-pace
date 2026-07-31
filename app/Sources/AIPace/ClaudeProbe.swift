@@ -1,6 +1,9 @@
 import Foundation
 
 struct ClaudeProbe: Sendable {
+    static let oauthClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+    static let defaultRefreshScopes = ["user:profile", "user:inference", "user:sessions:claude_code"]
+
     private let credentialLoader: ClaudeCredentialLoader
     private let accountInfoResolver: ClaudeAccountInfoResolver
     private let apiClient: ClaudeAPIClient
@@ -89,6 +92,16 @@ struct ClaudeProbe: Sendable {
         return try JSONDecoder().decode(ClaudeAuthStatus.self, from: Data(output.utf8))
     }
 
+    static func refreshRequestBody(refreshToken: String, scopes: [String]?) -> [String: Any] {
+        let resolvedScopes = (scopes?.isEmpty == false) ? scopes! : defaultRefreshScopes
+        return [
+            "grant_type": "refresh_token",
+            "refresh_token": refreshToken,
+            "client_id": oauthClientID,
+            "scope": resolvedScopes.joined(separator: " "),
+        ]
+    }
+
     static func liveRefreshToken(
         _ credentials: ClaudeCredentialResult,
         credentialLoader: ClaudeCredentialLoader
@@ -101,12 +114,9 @@ struct ClaudeProbe: Sendable {
         request.httpMethod = "POST"
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "grant_type": "refresh_token",
-            "refresh_token": refreshToken,
-            "client_id": "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
-            "scope": "user:profile user:inference user:sessions:claude_code",
-        ])
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: refreshRequestBody(refreshToken: refreshToken, scopes: credentials.oauth.scopes)
+        )
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {

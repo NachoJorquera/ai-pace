@@ -169,4 +169,26 @@ struct ClaudeProbeTests {
         #expect(usageTokens == ["old-token", "new-token"])
         #expect(refreshCalls == 1)
     }
+
+    @Test
+    func refreshRequestBodyUsesStoredScopes() {
+        let body = ClaudeProbe.refreshRequestBody(
+            refreshToken: "refresh-1",
+            scopes: ["user:file_upload", "user:inference", "user:mcp_servers", "user:profile", "user:sessions:claude_code"]
+        )
+
+        #expect(body["grant_type"] as? String == "refresh_token")
+        #expect(body["refresh_token"] as? String == "refresh-1")
+        #expect(body["client_id"] as? String == "9d1c250a-e61b-44d9-88ed-5944d1962f5e")
+        #expect(body["scope"] as? String == "user:file_upload user:inference user:mcp_servers user:profile user:sessions:claude_code")
+    }
+
+    @Test
+    func refreshRequestBodyFallsBackToDefaultScopes() {
+        let missing = ClaudeProbe.refreshRequestBody(refreshToken: "refresh-1", scopes: nil)
+        let empty = ClaudeProbe.refreshRequestBody(refreshToken: "refresh-1", scopes: [])
+
+        #expect(missing["scope"] as? String == "user:profile user:inference user:sessions:claude_code")
+        #expect(empty["scope"] as? String == "user:profile user:inference user:sessions:claude_code")
+    }
 }
