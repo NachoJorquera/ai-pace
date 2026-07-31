@@ -238,9 +238,8 @@ struct ClaudeCredentialLoader {
 
     private func updatedFullData(for result: ClaudeCredentialResult) -> [String: Any]? {
         var root = result.fullData
-        var oauth: [String: Any] = [
-            "accessToken": result.oauth.accessToken,
-        ]
+        var oauth = root["claudeAiOauth"] as? [String: Any] ?? [:]
+        oauth["accessToken"] = result.oauth.accessToken
         if let refreshToken = result.oauth.refreshToken {
             oauth["refreshToken"] = refreshToken
         }

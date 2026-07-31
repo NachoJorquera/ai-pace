@@ -108,6 +108,54 @@ struct ClaudeCredentialLoaderTests {
     }
 
     @Test
+    func saveCredentialsPreservesUnknownKeys() throws {
+        let homeDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: homeDirectory) }
+
+        let loader = ClaudeCredentialLoader(
+            homeDirectory: homeDirectory,
+            environment: [:],
+            keychainLoadOverride: .success(nil)
+        )
+        let result = ClaudeCredentialResult(
+            oauth: ClaudeOAuthCredentials(
+                accessToken: "new-token",
+                refreshToken: "new-refresh",
+                expiresAt: 999,
+                subscriptionType: "team"
+            ),
+            source: .file,
+            fullData: [
+                "mcpOAuth": ["someServer": ["accessToken": "mcp-token"]],
+                "claudeAiOauth": [
+                    "accessToken": "old-token",
+                    "refreshToken": "old-refresh",
+                    "expiresAt": 111,
+                    "refreshTokenExpiresAt": 222,
+                    "scopes": ["user:inference", "user:mcp_servers"],
+                    "subscriptionType": "team",
+                    "rateLimitTier": "default_claude_max_5x",
+                ],
+            ]
+        )
+
+        loader.saveCredentials(result)
+
+        let credentialsURL = homeDirectory.appendingPathComponent(".claude/.credentials.json")
+        let data = try Data(contentsOf: credentialsURL)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let oauth = try #require(object["claudeAiOauth"] as? [String: Any])
+
+        #expect(object["mcpOAuth"] != nil)
+        #expect(oauth["accessToken"] as? String == "new-token")
+        #expect(oauth["refreshToken"] as? String == "new-refresh")
+        #expect(oauth["expiresAt"] as? Double == 999)
+        #expect(oauth["refreshTokenExpiresAt"] as? Int == 222)
+        #expect(oauth["scopes"] as? [String] == ["user:inference", "user:mcp_servers"])
+        #expect(oauth["rateLimitTier"] as? String == "default_claude_max_5x")
+    }
+
+    @Test
     func mapKeychainErrorCategorizesCommonFailures() throws {
         let loader = ClaudeCredentialLoader(
             homeDirectory: try makeTemporaryDirectory(),
