@@ -257,25 +257,23 @@ struct ClaudeCredentialLoaderTests {
         )
         let oauth = ClaudeOAuthCredentials(accessToken: "token", refreshToken: "refresh", expiresAt: 1, subscriptionType: nil)
 
-        let unknownAccount = ClaudeCredentialResult(
-            oauth: oauth,
-            source: .keychain,
-            fullData: [:],
-            keychainAccount: nil
-        )
-        let knownAccount = ClaudeCredentialResult(
-            oauth: oauth,
-            source: .keychain,
-            fullData: [:],
-            keychainAccount: "test-account"
-        )
+        let credentials = ClaudeCredentialResult(oauth: oauth, source: .keychain, fullData: [:])
         let fileCredentials = ClaudeCredentialResult(oauth: oauth, source: .file, fullData: [:])
         let environmentCredentials = ClaudeCredentialResult(oauth: oauth, source: .environment, fullData: [:])
 
-        #expect(!loader.canPersist(unknownAccount))
-        #expect(loader.canPersist(knownAccount))
+        #expect(!loader.canPersist(credentials))
         #expect(loader.canPersist(fileCredentials))
         #expect(loader.canPersist(environmentCredentials))
+
+        _ = try ProcessRunner.runSync(
+            executable: "/usr/bin/security",
+            arguments: ["add-generic-password", "-s", service, "-a", "test-account", "-w", "{}"],
+            input: nil,
+            timeout: 10,
+            currentDirectory: nil
+        )
+
+        #expect(loader.canPersist(credentials))
     }
 
     @Test
@@ -306,7 +304,7 @@ struct ClaudeCredentialLoaderTests {
         // as failed instead of silently skipped.
         #expect(
             !loader.saveCredentials(
-                ClaudeCredentialResult(oauth: oauth, source: .keychain, fullData: [:], keychainAccount: nil)
+                ClaudeCredentialResult(oauth: oauth, source: .keychain, fullData: [:])
             )
         )
     }
@@ -345,7 +343,6 @@ struct ClaudeCredentialLoaderTests {
 
         let loaded = try #require(loader.loadCredentials())
         #expect(loaded.source == .keychain)
-        #expect(loaded.keychainAccount == "test-account")
 
         let creationDateBefore = try #require(Self.keychainCreationDate(from: Self.keychainAttributes(service: service)))
 
@@ -493,8 +490,7 @@ struct ClaudeCredentialLoaderTests {
         let result = ClaudeCredentialResult(
             oauth: ClaudeOAuthCredentials(accessToken: "new-token", refreshToken: nil, expiresAt: 999, subscriptionType: nil),
             source: .keychain,
-            fullData: ["claudeAiOauth": ["accessToken": "old"]],
-            keychainAccount: nil
+            fullData: ["claudeAiOauth": ["accessToken": "old"]]
         )
 
         loader.saveCredentials(result)
@@ -544,8 +540,7 @@ struct ClaudeCredentialLoaderTests {
                 subscriptionType: "team"
             ),
             source: .keychain,
-            fullData: ["claudeAiOauth": ["accessToken": "old"]],
-            keychainAccount: nil
+            fullData: ["claudeAiOauth": ["accessToken": "old"]]
         )
 
         loader.saveCredentials(result)

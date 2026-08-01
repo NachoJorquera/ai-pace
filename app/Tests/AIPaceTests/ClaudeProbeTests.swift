@@ -219,8 +219,7 @@ struct ClaudeProbeTests {
                 subscriptionType: nil
             ),
             source: .keychain,
-            fullData: ["claudeAiOauth": ["accessToken": "stored-token"]],
-            keychainAccount: nil
+            fullData: ["claudeAiOauth": ["accessToken": "stored-token"]]
         )
 
         #expect(!loader.canPersist(credentials))
@@ -259,8 +258,7 @@ struct ClaudeProbeTests {
                 subscriptionType: nil
             ),
             source: .keychain,
-            fullData: ["claudeAiOauth": ["accessToken": "stored-token"]],
-            keychainAccount: "test-account"
+            fullData: ["claudeAiOauth": ["accessToken": "stored-token"]]
         )
 
         do {
@@ -302,8 +300,7 @@ struct ClaudeProbeTests {
                 subscriptionType: nil
             ),
             source: .keychain,
-            fullData: ["claudeAiOauth": ["accessToken": "stored-token"]],
-            keychainAccount: "test-account"
+            fullData: ["claudeAiOauth": ["accessToken": "stored-token"]]
         )
 
         let updated = try ClaudeProbe.persistRefreshedCredentials(

@@ -33,7 +33,6 @@ struct ClaudeCredentialResult: @unchecked Sendable {
     var oauth: ClaudeOAuthCredentials
     let source: ClaudeCredentialSource
     var fullData: [String: Any]
-    var keychainAccount: String? = nil
 }
 
 struct ClaudeCredentialResolution {
@@ -115,7 +114,7 @@ struct ClaudeCredentialLoader {
                 // The injected seam replaces the real Keychain write.
                 return true
             }
-            return resolvedKeychainAccount(result.keychainAccount) != nil
+            return keychainAccountFromLiveItem() != nil
         }
     }
 
@@ -172,10 +171,9 @@ struct ClaudeCredentialLoader {
                 return .success(nil)
             }
 
-            guard var result = makeCredentialResult(from: root, source: .keychain) else {
+            guard let result = makeCredentialResult(from: root, source: .keychain) else {
                 return .success(nil)
             }
-            result.keychainAccount = keychainAccountFromLiveItem()
             return .success(result)
         } catch let error as ProcessRunnerError {
             return mapKeychainError(error)
@@ -260,7 +258,7 @@ struct ClaudeCredentialLoader {
             return false
         }
 
-        guard let account = resolvedKeychainAccount(result.keychainAccount) else {
+        guard let account = keychainAccountFromLiveItem() else {
             Self.logger.error("Aborting keychain credential save: could not determine the item account.")
             return false
         }
@@ -280,19 +278,10 @@ struct ClaudeCredentialLoader {
         }
     }
 
-    /// `-U` matches the item to update by service *and* account, so a wrong account silently creates
-    /// a duplicate that later loads would read past. Never guess: re-read the account from the live
-    /// item and give up if it is still unknown.
-    private func resolvedKeychainAccount(_ account: String?) -> String? {
-        if let account, !account.isEmpty {
-            return account
-        }
-
-        return keychainAccountFromLiveItem()
-    }
-
     /// Single place that reads the `acct` attribute off the live item, so the parsing rules can never
-    /// drift between the load path and the save path.
+    /// drift between callers. `-U` matches the item to update by service *and* account, so a wrong
+    /// account silently creates a duplicate that later loads would read past. Never guess; callers
+    /// must give up when this returns nil.
     private func keychainAccountFromLiveItem() -> String? {
         let attributesOutput = (try? ProcessRunner.runSync(
             executable: "/usr/bin/security",
