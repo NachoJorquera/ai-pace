@@ -263,7 +263,7 @@ struct ClaudeCredentialLoaderTests {
 
         #expect(!loader.canPersist(credentials))
         #expect(loader.canPersist(fileCredentials))
-        #expect(loader.canPersist(environmentCredentials))
+        #expect(!loader.canPersist(environmentCredentials))
 
         _ = try ProcessRunner.runSync(
             executable: "/usr/bin/security",
@@ -274,6 +274,26 @@ struct ClaudeCredentialLoaderTests {
         )
 
         #expect(loader.canPersist(credentials))
+    }
+
+    @Test
+    func environmentCredentialsAreNotRefreshableAndNotPersistable() throws {
+        let loader = ClaudeCredentialLoader(
+            homeDirectory: try makeTemporaryDirectory(),
+            environment: [:],
+            keychainLoadOverride: .success(nil)
+        )
+        let credentials = ClaudeCredentialResult(
+            oauth: ClaudeOAuthCredentials(accessToken: "token", refreshToken: nil, expiresAt: nil, subscriptionType: nil),
+            source: .environment,
+            fullData: [:]
+        )
+
+        #expect(!ClaudeCredentialSource.environment.isRefreshable)
+        #expect(ClaudeCredentialSource.file.isRefreshable)
+        #expect(ClaudeCredentialSource.keychain.isRefreshable)
+        #expect(!loader.canPersist(credentials))
+        #expect(loader.saveCredentials(credentials))
     }
 
     @Test

@@ -13,6 +13,11 @@ enum ClaudeCredentialSource: Sendable, Equatable {
     case file
     case keychain
     case environment
+
+    /// Environment (setup-token) credentials carry no refresh token and are never written back.
+    var isRefreshable: Bool {
+        self != .environment
+    }
 }
 
 enum ClaudeCredentialLoadIssue: Error, Sendable, Equatable {
@@ -107,8 +112,8 @@ struct ClaudeCredentialLoader {
         case .file:
             return true
         case .environment:
-            // Environment credentials are never persisted, and they never refresh either.
-            return true
+            // Not refreshable, so nothing ever needs persisting; there is also nowhere to write.
+            return false
         case .keychain:
             if keychainSaveOverride != nil {
                 // The injected seam replaces the real Keychain write.

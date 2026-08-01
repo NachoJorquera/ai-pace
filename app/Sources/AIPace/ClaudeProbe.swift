@@ -34,7 +34,7 @@ struct ClaudeProbe: Sendable {
             }
 
             if credentialLoader.needsRefresh(credentials.oauth) {
-                if credentials.source == .environment {
+                if !credentials.source.isRefreshable {
                     // setup-token style credentials have no refresh flow; use them as-is
                 } else if credentials.oauth.refreshToken != nil {
                     credentials = try await apiClient.refreshToken(credentials, credentialLoader)
@@ -48,7 +48,7 @@ struct ClaudeProbe: Sendable {
                 usage = try await apiClient.fetchUsage(credentials.oauth.accessToken)
             } catch let error as ProcessRunnerError {
                 if shouldRetryAfterAuthenticationError(error),
-                   credentials.source != .environment,
+                   credentials.source.isRefreshable,
                    credentials.oauth.refreshToken != nil {
                     credentials = try await apiClient.refreshToken(credentials, credentialLoader)
                     usage = try await apiClient.fetchUsage(credentials.oauth.accessToken)
