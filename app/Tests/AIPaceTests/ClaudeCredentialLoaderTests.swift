@@ -158,82 +158,6 @@ struct ClaudeCredentialLoaderTests {
     }
 
     @Test
-    func parseKeychainAccountExtractsAcctBlob() {
-        let output = """
-        keychain: "/Users/user/Library/Keychains/login.keychain-db"
-        version: 512
-        class: "genp"
-        attributes:
-            0x00000007 <blob>="Claude Code-credentials"
-            "acct"<blob>="user"
-            "mdat"<timedate>=0x32303236303733313134313031385A00  "20260731141018Z\\000"
-            "svce"<blob>="Claude Code-credentials"
-        """
-
-        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: output) == "user")
-    }
-
-    @Test
-    func parseKeychainAccountDecodesHexRenderedAccount() {
-        // `security` renders any account holding a non-ASCII byte as 0x<hex> plus an escaped copy.
-        let output = """
-        attributes:
-            "acct"<blob>=0x74C3A97374206E69C3B16F  "t\\303\\251st ni\\303\\261o"
-            "svce"<blob>="Claude Code-credentials"
-        """
-
-        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: output) == "tést niño")
-    }
-
-    @Test
-    func parseKeychainAccountDecodesMultiByteHexAccount() {
-        // Emoji and CJK accounts are 3 and 4 byte UTF-8 sequences.
-        let output = """
-        attributes:
-            "acct"<blob>=0xE4B8ADE69687F09F9880  "\\344\\270\\255\\346\\226\\207\\360\\237\\230\\200"
-        """
-
-        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: output) == "中文😀")
-    }
-
-    @Test
-    func parseKeychainAccountKeepsQuotedAndRejectsMalformedForms() {
-        let quotedWithSpaces = """
-        attributes:
-            "acct"<blob>="my account"
-        """
-        let embeddedSubstring = """
-        attributes:
-            "svce"<blob>="\\"acct\\"<blob>=\\"spoofed\\""
-        """
-        let emptyQuoted = """
-        attributes:
-            "acct"<blob>=""
-        """
-        let oddHex = """
-        attributes:
-            "acct"<blob>=0xABC  "junk"
-        """
-
-        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: quotedWithSpaces) == "my account")
-        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: embeddedSubstring) == nil)
-        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: emptyQuoted) == nil)
-        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: oddHex) == nil)
-    }
-
-    @Test
-    func parseKeychainAccountHandlesNullAndMissing() {
-        let nullOutput = """
-        attributes:
-            "acct"<blob>=<NULL>
-            "svce"<blob>="Claude Code-credentials"
-        """
-
-        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: nullOutput) == nil)
-        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: "") == nil)
-    }
-
-    @Test
     func canPersistRequiresAResolvableKeychainAccount() throws {
         let homeDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: homeDirectory) }
@@ -391,7 +315,7 @@ struct ClaudeCredentialLoaderTests {
         #expect(oauth["rateLimitTier"] as? String == "tier-1")
 
         let attributes = try Self.keychainAttributes(service: service)
-        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: attributes) == "test-account")
+        #expect(attributes.contains("\"acct\"<blob>=\"test-account\""))
         #expect(Self.keychainCreationDate(from: attributes) == creationDateBefore)
     }
 
@@ -516,7 +440,7 @@ struct ClaudeCredentialLoaderTests {
         _ = loader.saveCredentials(result)
 
         let attributes = try Self.keychainAttributes(service: service)
-        #expect(ClaudeCredentialLoader.parseKeychainAccount(from: attributes) == "real-account")
+        #expect(attributes.contains("\"acct\"<blob>=\"real-account\""))
 
         // Removing the single item must leave nothing behind; a leftover means a duplicate was made
         // and every later load would keep reading the stale one.
@@ -576,6 +500,54 @@ struct ClaudeCredentialLoaderTests {
                 currentDirectory: nil
             )
         }
+    }
+
+    @Test
+    func canPersistAndSaveResolveNonASCIIKeychainAccount() throws {
+        let service = "aipace-test-\(UUID().uuidString)"
+        defer {
+            _ = try? ProcessRunner.runSync(
+                executable: "/usr/bin/security",
+                arguments: ["delete-generic-password", "-s", service],
+                input: nil,
+                timeout: 10,
+                currentDirectory: nil
+            )
+        }
+
+        _ = try ProcessRunner.runSync(
+            executable: "/usr/bin/security",
+            arguments: ["add-generic-password", "-s", service, "-a", "tést niño", "-w", "{\"claudeAiOauth\": {\"accessToken\": \"old\"}}"],
+            input: nil,
+            timeout: 10,
+            currentDirectory: nil
+        )
+
+        let homeDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: homeDirectory) }
+        let loader = ClaudeCredentialLoader(
+            homeDirectory: homeDirectory,
+            environment: [:],
+            keychainService: service
+        )
+
+        let loaded = try #require(loader.loadCredentials())
+        #expect(loader.canPersist(loaded))
+
+        var updated = loaded
+        updated.oauth.accessToken = "new-token"
+        #expect(loader.saveCredentials(updated))
+
+        let rawSecret = try ProcessRunner.runSync(
+            executable: "/usr/bin/security",
+            arguments: ["find-generic-password", "-s", service, "-w"],
+            input: nil,
+            timeout: 10,
+            currentDirectory: nil
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        let root = try #require(JSONSerialization.jsonObject(with: Data(rawSecret.utf8)) as? [String: Any])
+        let oauth = try #require(root["claudeAiOauth"] as? [String: Any])
+        #expect(oauth["accessToken"] as? String == "new-token")
     }
 
     private static func keychainAttributes(service: String) throws -> String {

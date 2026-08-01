@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import os
 
 struct ClaudeOAuthCredentials: Sendable, Equatable {
@@ -282,19 +283,29 @@ struct ClaudeCredentialLoader {
         }
     }
 
-    /// Single place that reads the `acct` attribute off the live item, so the parsing rules can never
-    /// drift between callers. `-U` matches the item to update by service *and* account, so a wrong
-    /// account silently creates a duplicate that later loads would read past. Never guess; callers
-    /// must give up when this returns nil.
+    /// Single place that resolves the account of the live keychain item. `-U` matches the item to
+    /// update by service *and* account, so a wrong account silently creates a duplicate that later
+    /// loads would read past. Never guess; callers must give up when this returns nil.
+    ///
+    /// Reads attributes only — never `kSecReturnData`. Attribute reads do not consult the item's ACL,
+    /// so this cannot trigger an authorization prompt from a background app. The WRITE stays on
+    /// `/usr/bin/security` (see `saveToKeychain`) because updating the item does consult the ACL.
     private func keychainAccountFromLiveItem() -> String? {
-        let attributesOutput = (try? ProcessRunner.runSync(
-            executable: "/usr/bin/security",
-            arguments: ["find-generic-password", "-s", keychainService],
-            input: nil,
-            timeout: 10,
-            currentDirectory: nil
-        )) ?? ""
-        return Self.parseKeychainAccount(from: attributesOutput)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecReturnAttributes as String: true,
+        ]
+        var item: CFTypeRef?
+        guard
+            SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+            let attributes = item as? [String: Any],
+            let account = attributes[kSecAttrAccount as String] as? String,
+            !account.isEmpty
+        else {
+            return nil
+        }
+        return account
     }
 
     private func updatedFullData(for result: ClaudeCredentialResult) -> [String: Any]? {
@@ -343,55 +354,6 @@ struct ClaudeCredentialLoader {
         }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
-    }
-
-    static func parseKeychainAccount(from attributesOutput: String) -> String? {
-        let prefix = "\"acct\"<blob>="
-        for line in attributesOutput.split(separator: "\n") {
-            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
-            guard trimmedLine.hasPrefix(prefix) else {
-                continue
-            }
-            let value = trimmedLine.dropFirst(prefix.count)
-            // `security` switches to `0x<hex>  "escaped"` whenever the account holds a non-ASCII byte,
-            // so the hex form is the only readable rendering for those accounts.
-            if value.hasPrefix("0x") {
-                return decodeHexBlob(value.dropFirst(2))
-            }
-            guard value.hasPrefix("\""), value.hasSuffix("\""), value.count >= 2 else {
-                return nil
-            }
-            let account = String(value.dropFirst().dropLast())
-            return account.isEmpty ? nil : account
-        }
-        return nil
-    }
-
-    private static func decodeHexBlob(_ value: Substring) -> String? {
-        let digits = value.prefix { $0.isHexDigit }
-        guard !digits.isEmpty, digits.count % 2 == 0 else {
-            return nil
-        }
-
-        var bytes: [UInt8] = []
-        bytes.reserveCapacity(digits.count / 2)
-        var index = digits.startIndex
-        while index < digits.endIndex {
-            let next = digits.index(index, offsetBy: 2)
-            guard let byte = UInt8(digits[index ..< next], radix: 16) else {
-                return nil
-            }
-            bytes.append(byte)
-            index = next
-        }
-        while bytes.last == 0 {
-            bytes.removeLast()
-        }
-
-        guard let account = String(bytes: bytes, encoding: .utf8), !account.isEmpty else {
-            return nil
-        }
-        return account
     }
 
     func mapKeychainError(_ error: ProcessRunnerError) -> Result<ClaudeCredentialResult?, ClaudeCredentialLoadIssue> {
