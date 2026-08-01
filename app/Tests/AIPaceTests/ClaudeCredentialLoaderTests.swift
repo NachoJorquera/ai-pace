@@ -95,7 +95,7 @@ struct ClaudeCredentialLoaderTests {
             fullData: ["existing": "value"]
         )
 
-        loader.saveCredentials(result)
+        _ = loader.saveCredentials(result)
 
         let credentialsURL = homeDirectory.appendingPathComponent(".claude/.credentials.json")
         let data = try Data(contentsOf: credentialsURL)
@@ -141,7 +141,7 @@ struct ClaudeCredentialLoaderTests {
             ]
         )
 
-        loader.saveCredentials(result)
+        _ = loader.saveCredentials(result)
 
         let credentialsURL = homeDirectory.appendingPathComponent(".claude/.credentials.json")
         let data = try Data(contentsOf: credentialsURL)
@@ -350,7 +350,7 @@ struct ClaudeCredentialLoaderTests {
         updated.oauth.accessToken = "new-token"
         updated.oauth.refreshToken = "new-refresh"
         updated.oauth.expiresAt = 999
-        loader.saveCredentials(updated)
+        _ = loader.saveCredentials(updated)
 
         let rawSecret = try ProcessRunner.runSync(
             executable: "/usr/bin/security",
@@ -427,7 +427,7 @@ struct ClaudeCredentialLoaderTests {
         updated.oauth.accessToken = "new-token"
         updated.oauth.refreshToken = "new-refresh"
         updated.oauth.expiresAt = 999
-        loader.saveCredentials(updated)
+        _ = loader.saveCredentials(updated)
 
         let rawSecret = try ProcessRunner.runSync(
             executable: "/usr/bin/security",
@@ -493,7 +493,7 @@ struct ClaudeCredentialLoaderTests {
             fullData: ["claudeAiOauth": ["accessToken": "old"]]
         )
 
-        loader.saveCredentials(result)
+        _ = loader.saveCredentials(result)
 
         let attributes = try Self.keychainAttributes(service: service)
         #expect(ClaudeCredentialLoader.parseKeychainAccount(from: attributes) == "real-account")
@@ -543,7 +543,7 @@ struct ClaudeCredentialLoaderTests {
             fullData: ["claudeAiOauth": ["accessToken": "old"]]
         )
 
-        loader.saveCredentials(result)
+        _ = loader.saveCredentials(result)
 
         // No item existed, so the account is unknowable: the save must abort rather than guess an
         // account and create a duplicate item that later loads would read past.

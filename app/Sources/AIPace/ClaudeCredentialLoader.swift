@@ -120,7 +120,6 @@ struct ClaudeCredentialLoader {
 
     /// Returns whether the credential was actually written, so a caller that has already rotated the
     /// token pair can surface the failure instead of leaving a dead token behind in silence.
-    @discardableResult
     func saveCredentials(_ result: ClaudeCredentialResult) -> Bool {
         switch result.source {
         case .file:
