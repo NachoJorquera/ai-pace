@@ -34,6 +34,62 @@ func makeTemporaryDirectory() throws -> URL {
     return url
 }
 
+/// Runs `body` with a disposable keychain service name, guaranteeing cleanup even when the test throws.
+func withDisposableKeychainService(_ body: (String) throws -> Void) rethrows {
+    let service = "aipace-test-\(UUID().uuidString)"
+    defer {
+        _ = try? ProcessRunner.runSync(
+            executable: "/usr/bin/security",
+            arguments: ["delete-generic-password", "-s", service],
+            input: nil,
+            timeout: 10,
+            currentDirectory: nil
+        )
+    }
+    try body(service)
+}
+
+/// Seeds a generic password item. Fails the calling test on error via `throws`.
+func seedKeychainItem(service: String, account: String, secret: String) throws {
+    _ = try ProcessRunner.runSync(
+        executable: "/usr/bin/security",
+        arguments: ["add-generic-password", "-s", service, "-a", account, "-w", secret],
+        input: nil,
+        timeout: 10,
+        currentDirectory: nil
+    )
+}
+
+/// Reads the raw secret back, trimmed. Throws when the item does not exist.
+func readKeychainSecret(service: String) throws -> String {
+    try ProcessRunner.runSync(
+        executable: "/usr/bin/security",
+        arguments: ["find-generic-password", "-s", service, "-w"],
+        input: nil,
+        timeout: 10,
+        currentDirectory: nil
+    ).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+/// Reads the raw `security` attribute dump for a service, used to assert on the keychain account or
+/// creation date without going through `ClaudeCredentialLoader`.
+func keychainAttributes(service: String) throws -> String {
+    try ProcessRunner.runSync(
+        executable: "/usr/bin/security",
+        arguments: ["find-generic-password", "-s", service],
+        input: nil,
+        timeout: 10,
+        currentDirectory: nil
+    )
+}
+
+/// Builds the 7-key `claudeAiOauth` + `mcpOAuth` credential blob used to seed keychain integration tests.
+func makeCredentialBlobJSON(accessToken: String = "old", refreshToken: String = "old-r") -> String {
+    """
+    {"mcpOAuth": {"srv": {"accessToken": "mcp-1"}}, "claudeAiOauth": {"accessToken": "\(accessToken)", "refreshToken": "\(refreshToken)", "expiresAt": 1, "refreshTokenExpiresAt": 2, "scopes": ["user:inference"], "subscriptionType": "team", "rateLimitTier": "tier-1"}}
+    """
+}
+
 actor ProbeQueue {
     private var snapshots: [ProviderSnapshot]
 

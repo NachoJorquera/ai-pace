@@ -163,41 +163,26 @@ struct ClaudeCredentialLoaderTests {
         defer { try? FileManager.default.removeItem(at: homeDirectory) }
 
         // Disposable service with no item behind it: nothing is created, so nothing is left behind.
-        let service = "aipace-test-\(UUID().uuidString)"
-        defer {
-            _ = try? ProcessRunner.runSync(
-                executable: "/usr/bin/security",
-                arguments: ["delete-generic-password", "-s", service],
-                input: nil,
-                timeout: 10,
-                currentDirectory: nil
+        try withDisposableKeychainService { service in
+            let loader = ClaudeCredentialLoader(
+                homeDirectory: homeDirectory,
+                environment: [:],
+                keychainService: service
             )
+            let oauth = ClaudeOAuthCredentials(accessToken: "token", refreshToken: "refresh", expiresAt: 1, subscriptionType: nil)
+
+            let credentials = ClaudeCredentialResult(oauth: oauth, source: .keychain, fullData: [:])
+            let fileCredentials = ClaudeCredentialResult(oauth: oauth, source: .file, fullData: [:])
+            let environmentCredentials = ClaudeCredentialResult(oauth: oauth, source: .environment, fullData: [:])
+
+            #expect(!loader.canPersist(credentials))
+            #expect(loader.canPersist(fileCredentials))
+            #expect(!loader.canPersist(environmentCredentials))
+
+            try seedKeychainItem(service: service, account: "test-account", secret: "{}")
+
+            #expect(loader.canPersist(credentials))
         }
-
-        let loader = ClaudeCredentialLoader(
-            homeDirectory: homeDirectory,
-            environment: [:],
-            keychainService: service
-        )
-        let oauth = ClaudeOAuthCredentials(accessToken: "token", refreshToken: "refresh", expiresAt: 1, subscriptionType: nil)
-
-        let credentials = ClaudeCredentialResult(oauth: oauth, source: .keychain, fullData: [:])
-        let fileCredentials = ClaudeCredentialResult(oauth: oauth, source: .file, fullData: [:])
-        let environmentCredentials = ClaudeCredentialResult(oauth: oauth, source: .environment, fullData: [:])
-
-        #expect(!loader.canPersist(credentials))
-        #expect(loader.canPersist(fileCredentials))
-        #expect(!loader.canPersist(environmentCredentials))
-
-        _ = try ProcessRunner.runSync(
-            executable: "/usr/bin/security",
-            arguments: ["add-generic-password", "-s", service, "-a", "test-account", "-w", "{}"],
-            input: nil,
-            timeout: 10,
-            currentDirectory: nil
-        )
-
-        #expect(loader.canPersist(credentials))
     }
 
     @Test
@@ -225,184 +210,132 @@ struct ClaudeCredentialLoaderTests {
         let homeDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: homeDirectory) }
 
-        let service = "aipace-test-\(UUID().uuidString)"
-        defer {
-            _ = try? ProcessRunner.runSync(
-                executable: "/usr/bin/security",
-                arguments: ["delete-generic-password", "-s", service],
-                input: nil,
-                timeout: 10,
-                currentDirectory: nil
+        try withDisposableKeychainService { service in
+            let loader = ClaudeCredentialLoader(
+                homeDirectory: homeDirectory,
+                environment: [:],
+                keychainService: service
+            )
+            let oauth = ClaudeOAuthCredentials(accessToken: "token", refreshToken: "refresh", expiresAt: 999, subscriptionType: nil)
+
+            #expect(loader.saveCredentials(ClaudeCredentialResult(oauth: oauth, source: .file, fullData: [:])))
+            // No item exists for the service, so the account is unknowable and the write must be reported
+            // as failed instead of silently skipped.
+            #expect(
+                !loader.saveCredentials(
+                    ClaudeCredentialResult(oauth: oauth, source: .keychain, fullData: [:])
+                )
             )
         }
-
-        let loader = ClaudeCredentialLoader(
-            homeDirectory: homeDirectory,
-            environment: [:],
-            keychainService: service
-        )
-        let oauth = ClaudeOAuthCredentials(accessToken: "token", refreshToken: "refresh", expiresAt: 999, subscriptionType: nil)
-
-        #expect(loader.saveCredentials(ClaudeCredentialResult(oauth: oauth, source: .file, fullData: [:])))
-        // No item exists for the service, so the account is unknowable and the write must be reported
-        // as failed instead of silently skipped.
-        #expect(
-            !loader.saveCredentials(
-                ClaudeCredentialResult(oauth: oauth, source: .keychain, fullData: [:])
-            )
-        )
     }
 
     @Test
     func saveToKeychainRoundTripPreservesItemAndAccount() throws {
-        let service = "aipace-test-\(UUID().uuidString)"
-        defer {
-            _ = try? ProcessRunner.runSync(
-                executable: "/usr/bin/security",
-                arguments: ["delete-generic-password", "-s", service],
-                input: nil,
-                timeout: 10,
-                currentDirectory: nil
+        try withDisposableKeychainService { service in
+            try seedKeychainItem(service: service, account: "test-account", secret: makeCredentialBlobJSON())
+
+            let homeDirectory = try makeTemporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: homeDirectory) }
+            let loader = ClaudeCredentialLoader(
+                homeDirectory: homeDirectory,
+                environment: [:],
+                keychainService: service
             )
+
+            let loaded = try #require(loader.loadCredentials())
+            #expect(loaded.source == .keychain)
+
+            let creationDateBefore = try #require(Self.keychainCreationDate(from: keychainAttributes(service: service)))
+
+            var updated = loaded
+            updated.oauth.accessToken = "new-token"
+            updated.oauth.refreshToken = "new-refresh"
+            updated.oauth.expiresAt = 999
+            _ = loader.saveCredentials(updated)
+
+            let rawSecret = try readKeychainSecret(service: service)
+            let root = try #require(JSONSerialization.jsonObject(with: Data(rawSecret.utf8)) as? [String: Any])
+            let oauth = try #require(root["claudeAiOauth"] as? [String: Any])
+
+            #expect(root["mcpOAuth"] != nil)
+            #expect(oauth["accessToken"] as? String == "new-token")
+            #expect(oauth["refreshToken"] as? String == "new-refresh")
+            #expect(oauth["expiresAt"] as? Double == 999)
+            #expect(oauth["refreshTokenExpiresAt"] as? Int == 2)
+            #expect(oauth["scopes"] as? [String] == ["user:inference"])
+            #expect(oauth["rateLimitTier"] as? String == "tier-1")
+
+            let attributes = try keychainAttributes(service: service)
+            #expect(attributes.contains("\"acct\"<blob>=\"test-account\""))
+            #expect(Self.keychainCreationDate(from: attributes) == creationDateBefore)
         }
-
-        let seedJSON = """
-        {"mcpOAuth": {"srv": {"accessToken": "mcp-1"}}, "claudeAiOauth": {"accessToken": "old", "refreshToken": "old-r", "expiresAt": 1, "refreshTokenExpiresAt": 2, "scopes": ["user:inference"], "subscriptionType": "team", "rateLimitTier": "tier-1"}}
-        """
-        _ = try ProcessRunner.runSync(
-            executable: "/usr/bin/security",
-            arguments: ["add-generic-password", "-s", service, "-a", "test-account", "-w", seedJSON],
-            input: nil,
-            timeout: 10,
-            currentDirectory: nil
-        )
-
-        let homeDirectory = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: homeDirectory) }
-        let loader = ClaudeCredentialLoader(
-            homeDirectory: homeDirectory,
-            environment: [:],
-            keychainService: service
-        )
-
-        let loaded = try #require(loader.loadCredentials())
-        #expect(loaded.source == .keychain)
-
-        let creationDateBefore = try #require(Self.keychainCreationDate(from: Self.keychainAttributes(service: service)))
-
-        var updated = loaded
-        updated.oauth.accessToken = "new-token"
-        updated.oauth.refreshToken = "new-refresh"
-        updated.oauth.expiresAt = 999
-        _ = loader.saveCredentials(updated)
-
-        let rawSecret = try ProcessRunner.runSync(
-            executable: "/usr/bin/security",
-            arguments: ["find-generic-password", "-s", service, "-w"],
-            input: nil,
-            timeout: 10,
-            currentDirectory: nil
-        ).trimmingCharacters(in: .whitespacesAndNewlines)
-        let root = try #require(JSONSerialization.jsonObject(with: Data(rawSecret.utf8)) as? [String: Any])
-        let oauth = try #require(root["claudeAiOauth"] as? [String: Any])
-
-        #expect(root["mcpOAuth"] != nil)
-        #expect(oauth["accessToken"] as? String == "new-token")
-        #expect(oauth["refreshToken"] as? String == "new-refresh")
-        #expect(oauth["expiresAt"] as? Double == 999)
-        #expect(oauth["refreshTokenExpiresAt"] as? Int == 2)
-        #expect(oauth["scopes"] as? [String] == ["user:inference"])
-        #expect(oauth["rateLimitTier"] as? String == "tier-1")
-
-        let attributes = try Self.keychainAttributes(service: service)
-        #expect(attributes.contains("\"acct\"<blob>=\"test-account\""))
-        #expect(Self.keychainCreationDate(from: attributes) == creationDateBefore)
     }
 
     @Test
     func saveToKeychainWritesLargePayloadWithoutTruncation() throws {
-        let service = "aipace-test-\(UUID().uuidString)"
-        defer {
-            _ = try? ProcessRunner.runSync(
-                executable: "/usr/bin/security",
-                arguments: ["delete-generic-password", "-s", service],
-                input: nil,
-                timeout: 10,
-                currentDirectory: nil
+        try withDisposableKeychainService { service in
+            // The real "Claude Code-credentials" blob is ~8.4 KB, mostly MCP OAuth entries. The padding
+            // has to live in mcpOAuth here (not the shared 7-key blob fixture, which fixes that field to
+            // "mcp-1") so this test can assert nothing truncates a large, untouched field.
+            let padding = String(repeating: "m", count: 8000)
+            let seedRoot: [String: Any] = [
+                "mcpOAuth": ["srv": ["accessToken": padding]],
+                "claudeAiOauth": [
+                    "accessToken": "old",
+                    "refreshToken": "old-r",
+                    "expiresAt": 1,
+                    "refreshTokenExpiresAt": 2,
+                    "scopes": ["user:inference"],
+                    "subscriptionType": "team",
+                    "rateLimitTier": "tier-1",
+                ],
+            ]
+            let seedData = try JSONSerialization.data(withJSONObject: seedRoot, options: [.sortedKeys])
+            let seedJSON = try #require(String(data: seedData, encoding: .utf8))
+            #expect(seedData.count > 8000)
+
+            try seedKeychainItem(service: service, account: "test-account", secret: seedJSON)
+
+            let homeDirectory = try makeTemporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: homeDirectory) }
+            let loader = ClaudeCredentialLoader(
+                homeDirectory: homeDirectory,
+                environment: [:],
+                keychainService: service
             )
+
+            let loaded = try #require(loader.loadCredentials())
+            var updated = loaded
+            updated.oauth.accessToken = "new-token"
+            updated.oauth.refreshToken = "new-refresh"
+            updated.oauth.expiresAt = 999
+            _ = loader.saveCredentials(updated)
+
+            let rawSecret = try readKeychainSecret(service: service)
+
+            // A truncated write leaves non-JSON garbage here, which is the corruption we guard against.
+            #expect(rawSecret.utf8.count > 8000)
+            let root = try #require(JSONSerialization.jsonObject(with: Data(rawSecret.utf8)) as? [String: Any])
+            let mcp = try #require(root["mcpOAuth"] as? [String: Any])
+            let server = try #require(mcp["srv"] as? [String: Any])
+            let oauth = try #require(root["claudeAiOauth"] as? [String: Any])
+
+            #expect(server["accessToken"] as? String == padding)
+            #expect(oauth["accessToken"] as? String == "new-token")
+            #expect(oauth["refreshToken"] as? String == "new-refresh")
+            #expect(oauth["expiresAt"] as? Double == 999)
+            #expect(oauth["refreshTokenExpiresAt"] as? Int == 2)
+            #expect(oauth["scopes"] as? [String] == ["user:inference"])
+            #expect(oauth["rateLimitTier"] as? String == "tier-1")
         }
-
-        // The real "Claude Code-credentials" blob is ~8.4 KB, mostly MCP OAuth entries.
-        let padding = String(repeating: "m", count: 8000)
-        let seedRoot: [String: Any] = [
-            "mcpOAuth": ["srv": ["accessToken": padding]],
-            "claudeAiOauth": [
-                "accessToken": "old",
-                "refreshToken": "old-r",
-                "expiresAt": 1,
-                "refreshTokenExpiresAt": 2,
-                "scopes": ["user:inference"],
-                "subscriptionType": "team",
-                "rateLimitTier": "tier-1",
-            ],
-        ]
-        let seedData = try JSONSerialization.data(withJSONObject: seedRoot, options: [.sortedKeys])
-        let seedJSON = try #require(String(data: seedData, encoding: .utf8))
-        #expect(seedData.count > 8000)
-
-        _ = try ProcessRunner.runSync(
-            executable: "/usr/bin/security",
-            arguments: ["add-generic-password", "-s", service, "-a", "test-account", "-w", seedJSON],
-            input: nil,
-            timeout: 10,
-            currentDirectory: nil
-        )
-
-        let homeDirectory = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: homeDirectory) }
-        let loader = ClaudeCredentialLoader(
-            homeDirectory: homeDirectory,
-            environment: [:],
-            keychainService: service
-        )
-
-        let loaded = try #require(loader.loadCredentials())
-        var updated = loaded
-        updated.oauth.accessToken = "new-token"
-        updated.oauth.refreshToken = "new-refresh"
-        updated.oauth.expiresAt = 999
-        _ = loader.saveCredentials(updated)
-
-        let rawSecret = try ProcessRunner.runSync(
-            executable: "/usr/bin/security",
-            arguments: ["find-generic-password", "-s", service, "-w"],
-            input: nil,
-            timeout: 10,
-            currentDirectory: nil
-        ).trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // A truncated write leaves non-JSON garbage here, which is the corruption we guard against.
-        #expect(rawSecret.utf8.count > 8000)
-        let root = try #require(JSONSerialization.jsonObject(with: Data(rawSecret.utf8)) as? [String: Any])
-        let mcp = try #require(root["mcpOAuth"] as? [String: Any])
-        let server = try #require(mcp["srv"] as? [String: Any])
-        let oauth = try #require(root["claudeAiOauth"] as? [String: Any])
-
-        #expect(server["accessToken"] as? String == padding)
-        #expect(oauth["accessToken"] as? String == "new-token")
-        #expect(oauth["refreshToken"] as? String == "new-refresh")
-        #expect(oauth["expiresAt"] as? Double == 999)
-        #expect(oauth["refreshTokenExpiresAt"] as? Int == 2)
-        #expect(oauth["scopes"] as? [String] == ["user:inference"])
-        #expect(oauth["rateLimitTier"] as? String == "tier-1")
     }
 
     @Test
     func saveToKeychainRereadsAccountInsteadOfCreatingDuplicate() throws {
-        let service = "aipace-test-\(UUID().uuidString)"
-        defer {
-            // Delete twice: if the save wrongly created a duplicate, the first delete only removes one.
-            for _ in 0..<2 {
+        try withDisposableKeychainService { service in
+            // Delete once more here: if the save wrongly created a duplicate, this delete plus
+            // withDisposableKeychainService's own cleanup together remove both copies.
+            defer {
                 _ = try? ProcessRunner.runSync(
                     executable: "/usr/bin/security",
                     arguments: ["delete-generic-password", "-s", service],
@@ -411,153 +344,99 @@ struct ClaudeCredentialLoaderTests {
                     currentDirectory: nil
                 )
             }
-        }
 
-        _ = try ProcessRunner.runSync(
-            executable: "/usr/bin/security",
-            arguments: [
-                "add-generic-password", "-s", service, "-a", "real-account",
-                "-w", #"{"claudeAiOauth": {"accessToken": "old"}}"#,
-            ],
-            input: nil,
-            timeout: 10,
-            currentDirectory: nil
-        )
+            try seedKeychainItem(service: service, account: "real-account", secret: #"{"claudeAiOauth": {"accessToken": "old"}}"#)
 
-        let homeDirectory = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: homeDirectory) }
-        let loader = ClaudeCredentialLoader(
-            homeDirectory: homeDirectory,
-            environment: [:],
-            keychainService: service
-        )
-        let result = ClaudeCredentialResult(
-            oauth: ClaudeOAuthCredentials(accessToken: "new-token", refreshToken: nil, expiresAt: 999, subscriptionType: nil),
-            source: .keychain,
-            fullData: ["claudeAiOauth": ["accessToken": "old"]]
-        )
+            let homeDirectory = try makeTemporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: homeDirectory) }
+            let loader = ClaudeCredentialLoader(
+                homeDirectory: homeDirectory,
+                environment: [:],
+                keychainService: service
+            )
+            let result = ClaudeCredentialResult(
+                oauth: ClaudeOAuthCredentials(accessToken: "new-token", refreshToken: nil, expiresAt: 999, subscriptionType: nil),
+                source: .keychain,
+                fullData: ["claudeAiOauth": ["accessToken": "old"]]
+            )
 
-        _ = loader.saveCredentials(result)
+            _ = loader.saveCredentials(result)
 
-        let attributes = try Self.keychainAttributes(service: service)
-        #expect(attributes.contains("\"acct\"<blob>=\"real-account\""))
+            let attributes = try keychainAttributes(service: service)
+            #expect(attributes.contains("\"acct\"<blob>=\"real-account\""))
 
-        // Removing the single item must leave nothing behind; a leftover means a duplicate was made
-        // and every later load would keep reading the stale one.
-        _ = try ProcessRunner.runSync(
-            executable: "/usr/bin/security",
-            arguments: ["delete-generic-password", "-s", service],
-            input: nil,
-            timeout: 10,
-            currentDirectory: nil
-        )
-        #expect(throws: ProcessRunnerError.self) {
-            _ = try Self.keychainAttributes(service: service)
+            // Removing the single item must leave nothing behind; a leftover means a duplicate was made
+            // and every later load would keep reading the stale one.
+            _ = try ProcessRunner.runSync(
+                executable: "/usr/bin/security",
+                arguments: ["delete-generic-password", "-s", service],
+                input: nil,
+                timeout: 10,
+                currentDirectory: nil
+            )
+            #expect(throws: ProcessRunnerError.self) {
+                _ = try keychainAttributes(service: service)
+            }
         }
     }
 
     @Test
     func saveToKeychainSkipsWriteWhenAccountCannotBeResolved() throws {
-        let service = "aipace-test-\(UUID().uuidString)"
-        let homeDirectory = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: homeDirectory) }
-        defer {
-            _ = try? ProcessRunner.runSync(
-                executable: "/usr/bin/security",
-                arguments: ["delete-generic-password", "-s", service],
-                input: nil,
-                timeout: 10,
-                currentDirectory: nil
+        try withDisposableKeychainService { service in
+            let homeDirectory = try makeTemporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: homeDirectory) }
+
+            let loader = ClaudeCredentialLoader(
+                homeDirectory: homeDirectory,
+                environment: [:],
+                keychainService: service
             )
-        }
-
-        let loader = ClaudeCredentialLoader(
-            homeDirectory: homeDirectory,
-            environment: [:],
-            keychainService: service
-        )
-        let result = ClaudeCredentialResult(
-            oauth: ClaudeOAuthCredentials(
-                accessToken: "new-token",
-                refreshToken: "new-refresh",
-                expiresAt: 999,
-                subscriptionType: "team"
-            ),
-            source: .keychain,
-            fullData: ["claudeAiOauth": ["accessToken": "old"]]
-        )
-
-        _ = loader.saveCredentials(result)
-
-        // No item existed, so the account is unknowable: the save must abort rather than guess an
-        // account and create a duplicate item that later loads would read past.
-        #expect(throws: ProcessRunnerError.self) {
-            _ = try ProcessRunner.runSync(
-                executable: "/usr/bin/security",
-                arguments: ["find-generic-password", "-s", service, "-w"],
-                input: nil,
-                timeout: 10,
-                currentDirectory: nil
+            let result = ClaudeCredentialResult(
+                oauth: ClaudeOAuthCredentials(
+                    accessToken: "new-token",
+                    refreshToken: "new-refresh",
+                    expiresAt: 999,
+                    subscriptionType: "team"
+                ),
+                source: .keychain,
+                fullData: ["claudeAiOauth": ["accessToken": "old"]]
             )
+
+            _ = loader.saveCredentials(result)
+
+            // No item existed, so the account is unknowable: the save must abort rather than guess an
+            // account and create a duplicate item that later loads would read past.
+            #expect(throws: ProcessRunnerError.self) {
+                _ = try readKeychainSecret(service: service)
+            }
         }
     }
 
     @Test
     func canPersistAndSaveResolveNonASCIIKeychainAccount() throws {
-        let service = "aipace-test-\(UUID().uuidString)"
-        defer {
-            _ = try? ProcessRunner.runSync(
-                executable: "/usr/bin/security",
-                arguments: ["delete-generic-password", "-s", service],
-                input: nil,
-                timeout: 10,
-                currentDirectory: nil
+        try withDisposableKeychainService { service in
+            try seedKeychainItem(service: service, account: "tést niño", secret: "{\"claudeAiOauth\": {\"accessToken\": \"old\"}}")
+
+            let homeDirectory = try makeTemporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: homeDirectory) }
+            let loader = ClaudeCredentialLoader(
+                homeDirectory: homeDirectory,
+                environment: [:],
+                keychainService: service
             )
+
+            let loaded = try #require(loader.loadCredentials())
+            #expect(loader.canPersist(loaded))
+
+            var updated = loaded
+            updated.oauth.accessToken = "new-token"
+            #expect(loader.saveCredentials(updated))
+
+            let rawSecret = try readKeychainSecret(service: service)
+            let root = try #require(JSONSerialization.jsonObject(with: Data(rawSecret.utf8)) as? [String: Any])
+            let oauth = try #require(root["claudeAiOauth"] as? [String: Any])
+            #expect(oauth["accessToken"] as? String == "new-token")
         }
-
-        _ = try ProcessRunner.runSync(
-            executable: "/usr/bin/security",
-            arguments: ["add-generic-password", "-s", service, "-a", "tést niño", "-w", "{\"claudeAiOauth\": {\"accessToken\": \"old\"}}"],
-            input: nil,
-            timeout: 10,
-            currentDirectory: nil
-        )
-
-        let homeDirectory = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: homeDirectory) }
-        let loader = ClaudeCredentialLoader(
-            homeDirectory: homeDirectory,
-            environment: [:],
-            keychainService: service
-        )
-
-        let loaded = try #require(loader.loadCredentials())
-        #expect(loader.canPersist(loaded))
-
-        var updated = loaded
-        updated.oauth.accessToken = "new-token"
-        #expect(loader.saveCredentials(updated))
-
-        let rawSecret = try ProcessRunner.runSync(
-            executable: "/usr/bin/security",
-            arguments: ["find-generic-password", "-s", service, "-w"],
-            input: nil,
-            timeout: 10,
-            currentDirectory: nil
-        ).trimmingCharacters(in: .whitespacesAndNewlines)
-        let root = try #require(JSONSerialization.jsonObject(with: Data(rawSecret.utf8)) as? [String: Any])
-        let oauth = try #require(root["claudeAiOauth"] as? [String: Any])
-        #expect(oauth["accessToken"] as? String == "new-token")
-    }
-
-    private static func keychainAttributes(service: String) throws -> String {
-        try ProcessRunner.runSync(
-            executable: "/usr/bin/security",
-            arguments: ["find-generic-password", "-s", service],
-            input: nil,
-            timeout: 10,
-            currentDirectory: nil
-        )
     }
 
     private static func keychainCreationDate(from attributesOutput: String) -> String? {
