@@ -210,7 +210,7 @@ struct ClaudeCredentialLoaderTests {
         let homeDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: homeDirectory) }
 
-        try withDisposableKeychainService { service in
+        withDisposableKeychainService { service in
             let loader = ClaudeCredentialLoader(
                 homeDirectory: homeDirectory,
                 environment: [:],

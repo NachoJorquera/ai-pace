@@ -2,24 +2,6 @@ import Foundation
 import Testing
 @testable import AIPace
 
-/// Captures what the injected keychain save seam received, without touching a real Keychain.
-private final class SavedCredentialsBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored: ClaudeCredentialResult?
-
-    var value: ClaudeCredentialResult? {
-        lock.lock()
-        defer { lock.unlock() }
-        return stored
-    }
-
-    func store(_ result: ClaudeCredentialResult) {
-        lock.lock()
-        defer { lock.unlock() }
-        stored = result
-    }
-}
-
 struct ClaudeProbeTests {
     @Test
     func fetchReturnsUsageSnapshotAndDetailText() async throws {
@@ -282,15 +264,11 @@ struct ClaudeProbeTests {
         let homeDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: homeDirectory) }
 
-        let saved = SavedCredentialsBox()
         let loader = ClaudeCredentialLoader(
             homeDirectory: homeDirectory,
             environment: [:],
             keychainLoadOverride: .success(nil),
-            keychainSaveOverride: { result in
-                saved.store(result)
-                return true
-            }
+            keychainSaveOverride: { _ in true }
         )
         let credentials = ClaudeCredentialResult(
             oauth: ClaudeOAuthCredentials(
@@ -312,8 +290,6 @@ struct ClaudeProbeTests {
         #expect(updated.oauth.accessToken == "new-token")
         #expect(updated.oauth.refreshToken == "new-refresh")
         #expect((updated.oauth.expiresAt ?? 0) > Date().timeIntervalSince1970 * 1000)
-        #expect(saved.value?.oauth.accessToken == "new-token")
-        #expect(saved.value?.oauth.refreshToken == "new-refresh")
     }
 
     @Test

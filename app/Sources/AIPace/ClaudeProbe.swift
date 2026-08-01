@@ -93,7 +93,12 @@ struct ClaudeProbe: Sendable {
     }
 
     static func refreshRequestBody(refreshToken: String, scopes: [String]?) -> [String: Any] {
-        let resolvedScopes = (scopes?.isEmpty == false) ? scopes! : defaultRefreshScopes
+        let resolvedScopes: [String]
+        if let scopes, !scopes.isEmpty {
+            resolvedScopes = scopes
+        } else {
+            resolvedScopes = defaultRefreshScopes
+        }
         return [
             "grant_type": "refresh_token",
             "refresh_token": refreshToken,
@@ -110,9 +115,7 @@ struct ClaudeProbe: Sendable {
             return credentials
         }
 
-        // The endpoint rotates the token pair, so the stored refresh token is dead the moment this call
-        // succeeds. Refreshing without a writable destination would log the user out of Claude Code, so
-        // check persistence first and fail loudly instead of burning the token.
+        // Refresh rotates the token pair server side (see canPersist(_:)). Verify before burning the token.
         guard credentialLoader.canPersist(credentials) else {
             throw ProcessRunnerError.invalidResponse(
                 "Claude token refresh skipped: the Keychain credential account could not be determined, so a refreshed token could not be saved. Run `claude` and log in again to restore the Keychain item."
@@ -149,8 +152,7 @@ struct ClaudeProbe: Sendable {
     }
 
     /// Applies a refresh response to the stored credential and writes it back, throwing when the write
-    /// did not happen: at this point the old refresh token is already invalid server side, so a silent
-    /// failure would leave the keychain holding a dead token that never recovers.
+    /// did not happen so the failure surfaces instead of leaving a dead token behind.
     static func persistRefreshedCredentials(
         _ payload: ClaudeRefreshResponse,
         into credentials: ClaudeCredentialResult,
