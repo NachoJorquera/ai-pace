@@ -436,6 +436,19 @@ struct ClaudeCredentialLoaderTests {
             let root = try #require(JSONSerialization.jsonObject(with: Data(rawSecret.utf8)) as? [String: Any])
             let oauth = try #require(root["claudeAiOauth"] as? [String: Any])
             #expect(oauth["accessToken"] as? String == "new-token")
+
+            // Removing the single item must leave nothing behind; a leftover means the save resolved
+            // the wrong (mangled) account and created a duplicate instead of updating in place.
+            _ = try ProcessRunner.runSync(
+                executable: "/usr/bin/security",
+                arguments: ["delete-generic-password", "-s", service],
+                input: nil,
+                timeout: 10,
+                currentDirectory: nil
+            )
+            #expect(throws: ProcessRunnerError.self) {
+                _ = try keychainAttributes(service: service)
+            }
         }
     }
 
