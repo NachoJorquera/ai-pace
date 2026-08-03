@@ -52,7 +52,14 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
 
     private func createStatusItem(reason: StatusItemRepairReason) {
         logger.info("Creating status item: \(reason.rawValue, privacy: .public)")
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        // Stable name = persisted position. Never rename: it is a defaults-key compatibility surface.
+        item.autosaveName = "AIPaceStatusItem"
+        // With an autosaveName, AppKit persists AND restores isVisible under that key. If that key ever
+        // went false (an experimental build, a stray defaults write), every launch would create a hidden
+        // item whose window is nil, and the retry budget would burn against an item AppKit keeps hiding.
+        item.isVisible = true
+        statusItem = item
         statusItemCreatedAt = Date()
         configureStatusItem(reason: reason)
     }
