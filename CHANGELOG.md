@@ -12,6 +12,7 @@ The format is based on Keep a Changelog, and this project follows semantic versi
 - Token refresh requests the originally granted OAuth scopes instead of a hardcoded subset
 - Token refresh is skipped when the refreshed credentials could not be saved, so a failed write no longer invalidates the stored token; the reason is shown in the popover instead of failing silently
 - Keychain credentials whose account contains non-ASCII characters are now read correctly, so those accounts can be updated too
+- Menu bar icon no longer disappears permanently after display wake: healthy status items are refreshed in place instead of torn down, failed rebuilds retry with a bounded budget, and the icon keeps a stable menu bar position
 
 ## [1.1.2] - 2026-04-25
 
