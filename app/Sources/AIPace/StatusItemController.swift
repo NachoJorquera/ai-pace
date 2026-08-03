@@ -132,7 +132,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
             guard !Task.isCancelled else {
                 return
             }
-            self?.rebuildStatusItem(reason: .wakeFollowup)
+            self?.scheduleStatusItemRepair(reason: .wakeFollowup)
         }
     }
 
