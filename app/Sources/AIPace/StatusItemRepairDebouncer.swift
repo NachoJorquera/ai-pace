@@ -5,6 +5,7 @@ enum StatusItemRepairReason: String {
     case wake
     case wakeFollowup = "wake-followup"
     case displayChange = "display-change"
+    case retry
 }
 
 @MainActor

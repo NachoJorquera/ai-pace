@@ -28,4 +28,23 @@ struct StatusItemControllerTests {
         #expect(StatusItemController.statusItemLength(forContentWidth: 10) == 32)
         #expect(StatusItemController.statusItemLength(forContentWidth: 40) == 52)
     }
+
+    @Test
+    @MainActor
+    func rebuildSucceededRequiresButtonAndWindow() {
+        #expect(StatusItemController.rebuildSucceeded(buttonPresent: true, hasWindow: true))
+        #expect(!StatusItemController.rebuildSucceeded(buttonPresent: true, hasWindow: false))
+        #expect(!StatusItemController.rebuildSucceeded(buttonPresent: false, hasWindow: false))
+        #expect(!StatusItemController.rebuildSucceeded(buttonPresent: false, hasWindow: true))
+    }
+
+    @Test
+    @MainActor
+    func onlyLifecycleTriggersResetTheRetryBudget() {
+        #expect(StatusItemController.resetsRetryBudget(.launch))
+        #expect(StatusItemController.resetsRetryBudget(.wake))
+        #expect(StatusItemController.resetsRetryBudget(.displayChange))
+        #expect(!StatusItemController.resetsRetryBudget(.wakeFollowup))
+        #expect(!StatusItemController.resetsRetryBudget(.retry))
+    }
 }

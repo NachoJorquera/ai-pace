@@ -20,12 +20,16 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
     private var lifecycleObservers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
     private var cancellables = Set<AnyCancellable>()
     private var wakeFollowupTask: Task<Void, Never>?
+    private static let maxRetryAttempts = 3
+    private static let retryDelay: Duration = .seconds(2)
+    private var repairRetryTask: Task<Void, Never>?
+    private var repairRetryAttempts = 0
     private var rebuildCount = 0
     private var statusItemCreatedAt: Date?
     private var isInRendererFallback = false
     private var isUsingFallbackLabel = false
     private lazy var repairDebouncer = StatusItemRepairDebouncer { [weak self] reason in
-        self?.rebuildStatusItem(reason: reason)
+        self?.repairStatusItem(reason: reason)
     }
 
     init(store: UsageStore, openSettings: @escaping @MainActor () -> Void) {
@@ -40,6 +44,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
 
     deinit {
         wakeFollowupTask?.cancel()
+        repairRetryTask?.cancel()
         lifecycleObservers.forEach { observer in
             observer.center.removeObserver(observer.token)
         }
@@ -73,7 +78,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
         closePopover()
         removeStatusItem(reason: reason)
         createStatusItem(reason: reason)
-        logPostRebuildState(reason: reason)
+        verifyRebuildOutcome(reason: reason)
     }
 
     private func configureStatusItem(reason: StatusItemRepairReason) {
@@ -122,7 +127,25 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
 
     private func scheduleStatusItemRepair(reason: StatusItemRepairReason) {
         logger.info("Scheduling status item repair: \(reason.rawValue, privacy: .public)")
+        if Self.resetsRetryBudget(reason) {
+            repairRetryAttempts = 0
+            repairRetryTask?.cancel()
+        }
         repairDebouncer.schedule(reason: reason)
+    }
+
+    /// Healthy items are refreshed in place; only dead items pay for a teardown. Rebuilding a live
+    /// NSStatusItem while macOS is reconnecting status item scenes is what killed the icon.
+    private func repairStatusItem(reason: StatusItemRepairReason) {
+        let button = statusItem?.button
+        if Self.rebuildSucceeded(buttonPresent: button != nil, hasWindow: button?.window != nil) {
+            logger.info("Status item healthy; refreshing content: \(reason.rawValue, privacy: .public)")
+            repairRetryAttempts = 0
+            repairRetryTask?.cancel()
+            updateButtonTitle()
+            return
+        }
+        rebuildStatusItem(reason: reason)
     }
 
     private func scheduleSecondWakeRepair() {
@@ -136,7 +159,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
         }
     }
 
-    private func logPostRebuildState(reason: StatusItemRepairReason) {
+    private func verifyRebuildOutcome(reason: StatusItemRepairReason) {
         let button = statusItem?.button
         let buttonPresent = button != nil
         let hasWindow = button?.window != nil
@@ -145,6 +168,31 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
         logger.info(
             "Status item rebuild result: reason=\(reason.rawValue, privacy: .public) button=\(buttonPresent) window=\(hasWindow) length=\(length, format: .fixed(precision: 1)) fallback=\(usesFallback)"
         )
+
+        guard Self.rebuildSucceeded(buttonPresent: buttonPresent, hasWindow: hasWindow) else {
+            scheduleRepairRetry()
+            return
+        }
+        repairRetryAttempts = 0
+        repairRetryTask?.cancel()
+    }
+
+    private func scheduleRepairRetry() {
+        repairRetryAttempts += 1
+        guard repairRetryAttempts <= Self.maxRetryAttempts else {
+            logger.error("Status item rebuild retries exhausted; giving up until the next lifecycle trigger")
+            return
+        }
+
+        logger.error("Status item rebuild produced a dead item; retry #\(self.repairRetryAttempts) of \(Self.maxRetryAttempts) in 2s")
+        repairRetryTask?.cancel()
+        repairRetryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.retryDelay)
+            guard !Task.isCancelled else {
+                return
+            }
+            self?.scheduleStatusItemRepair(reason: .retry)
+        }
     }
 
     private func configurePopover() {
@@ -295,6 +343,22 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
 
     static func statusItemLength(forContentWidth width: CGFloat) -> CGFloat {
         max(width + statusItemLengthPadding, minimumStatusItemLength)
+    }
+
+    static func rebuildSucceeded(buttonPresent: Bool, hasWindow: Bool) -> Bool {
+        buttonPresent && hasWindow
+    }
+
+    /// Only genuine lifecycle events grant a fresh retry budget. `.wakeFollowup` is part of the same
+    /// wake settling window, and `.retry` is the budget being SPENT; letting either reset the count
+    /// would re-arm the loop it bounds. Exhaustive switch: adding a reason forces a decision here.
+    static func resetsRetryBudget(_ reason: StatusItemRepairReason) -> Bool {
+        switch reason {
+        case .launch, .wake, .displayChange:
+            return true
+        case .wakeFollowup, .retry:
+            return false
+        }
     }
 
     @objc private func handleClick(_ sender: Any?) {
