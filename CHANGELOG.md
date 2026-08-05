@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project follows semantic versi
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-08-05
+
 ### Fixed
 - Token refresh no longer deletes the Claude Code Keychain credentials (the previous save path removed the item and the re-add silently failed), which logged users out of Claude Code daily
 - Credential writes now preserve all stored fields (`scopes`, `refreshTokenExpiresAt`, `rateLimitTier`, `mcpOAuth`) instead of dropping them
