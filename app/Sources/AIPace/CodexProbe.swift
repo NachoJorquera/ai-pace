@@ -1,37 +1,68 @@
 import Foundation
 
 struct CodexProbe: Sendable {
+    /// Anything lasting a day or more is a weekly-style quota. Codex reports 10080 minutes (7 days)
+    /// for its weekly window and 300 for the 5h one, so the threshold sits far from both.
+    static let minimumWeeklyDurationMins: Double = 1440
+
     func fetch() async -> ProviderSnapshot {
         do {
             let limits = try await fetchRateLimits()
+            let windows = usageWindows(from: limits)
             return ProviderSnapshot(
                 provider: .codex,
-                windows: [
-                    UsageWindow(
-                        kind: .fiveHour,
-                        usedPercentage: limits.primary?.usedPercent,
-                        resetsAt: limits.primary?.resetsAt,
-                        message: limits.primary == nil ? "No 5h limit returned." : nil
-                    ),
-                    UsageWindow(
-                        kind: .weekly,
-                        usedPercentage: limits.secondary?.usedPercent,
-                        resetsAt: limits.secondary?.resetsAt,
-                        message: limits.secondary == nil ? "No weekly limit returned." : nil
-                    ),
-                ],
+                windows: windows.isEmpty
+                    ? [UsageWindow(kind: .weekly, usedPercentage: nil, resetsAt: nil, message: "No usage limits returned.")]
+                    : windows,
                 detail: limits.planType.map { "Plan: \($0)" }
             )
         } catch {
             return ProviderSnapshot(
                 provider: .codex,
                 windows: [
-                    UsageWindow(kind: .fiveHour, usedPercentage: nil, resetsAt: nil, message: error.localizedDescription),
                     UsageWindow(kind: .weekly, usedPercentage: nil, resetsAt: nil, message: error.localizedDescription),
                 ],
                 detail: nil
             )
         }
+    }
+
+    /// Builds one window per quota Codex actually reports, classified by the duration it states
+    /// rather than by its position in the response. Codex dropped its 5h quota, so `primary` is now
+    /// the weekly window and the old positional mapping labeled it "5h".
+    func usageWindows(from limits: CodexRateLimits) -> [UsageWindow] {
+        let candidates: [(window: CodexRateLimitWindow, fallbackKind: UsageWindowKind)] = [
+            (limits.primary, UsageWindowKind.fiveHour),
+            (limits.secondary, UsageWindowKind.weekly),
+        ].compactMap { window, fallbackKind in
+            window.map { ($0, fallbackKind) }
+        }
+
+        let durationKinds = candidates.map {
+            Self.windowKind(forDurationMins: $0.window.windowDurationMins, fallback: $0.fallbackKind)
+        }
+        // Two windows sharing a kind would hide one behind the other in the lookups and collide as
+        // view identities. The positional mapping is distinct by construction, so fall back to it
+        // instead of dropping a quota.
+        let kinds = Set(durationKinds).count == durationKinds.count
+            ? durationKinds
+            : candidates.map(\.fallbackKind)
+
+        return zip(candidates, kinds).map { candidate, kind in
+            UsageWindow(
+                kind: kind,
+                usedPercentage: candidate.window.usedPercent,
+                resetsAt: candidate.window.resetsAt
+            )
+        }
+    }
+
+    /// Falls back to the positional kind when the CLI is old enough not to report a duration.
+    static func windowKind(forDurationMins durationMins: Double?, fallback: UsageWindowKind) -> UsageWindowKind {
+        guard let durationMins else {
+            return fallback
+        }
+        return durationMins >= minimumWeeklyDurationMins ? .weekly : .fiveHour
     }
 
     private func fetchRateLimits() async throws -> CodexRateLimits {
@@ -114,7 +145,11 @@ struct CodexProbe: Sendable {
             return nil
         }
         let resetsAt = numericValue(window["resetsAt"]).map(Date.init(timeIntervalSince1970:))
-        return CodexRateLimitWindow(usedPercent: usedPercent, resetsAt: resetsAt)
+        return CodexRateLimitWindow(
+            usedPercent: usedPercent,
+            resetsAt: resetsAt,
+            windowDurationMins: numericValue(window["windowDurationMins"])
+        )
     }
 
     func numericValue(_ value: Any?) -> Double? {
@@ -142,6 +177,8 @@ struct CodexRateLimits {
 struct CodexRateLimitWindow: Sendable, Equatable {
     let usedPercent: Double
     let resetsAt: Date?
+    /// Length of the quota window as reported by Codex, in minutes. Absent on older CLI versions.
+    let windowDurationMins: Double?
 }
 
 func writeJSONLine(_ object: [String: Any], to handle: FileHandle) throws {
