@@ -201,9 +201,10 @@ private struct ProviderCard: View {
                 }
             }
 
-            // Usage rows
-            UsageRow(window: snapshot.fiveHour, provider: snapshot.provider, store: store, accent: accent, lang: lang)
-            UsageRow(window: snapshot.weekly, provider: snapshot.provider, store: store, accent: accent, lang: lang)
+            // Usage rows: one per window the provider reported
+            ForEach(snapshot.windows) { window in
+                UsageRow(window: window, provider: snapshot.provider, store: store, accent: accent, lang: lang)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -220,8 +221,8 @@ private struct WeeklyPacingInsight {
     let message: String
     let color: Color
 
-    init?(window: UsageWindow, lang: AppLanguage, now: Date = .now) {
-        guard let delta = WeeklyPacing.delta(for: window, now: now) else {
+    init?(window: UsageWindow?, lang: AppLanguage, now: Date = .now) {
+        guard let window, let delta = WeeklyPacing.delta(for: window, now: now) else {
             return nil
         }
 
@@ -275,7 +276,7 @@ private struct UsageRow: View {
                 .pointerOnHover()
                 .padding(.leading, 4)
 
-                Text(loc.windowLabel(window.kind))
+                Text(window.label ?? loc.windowLabel(window.kind))
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.secondary)
 

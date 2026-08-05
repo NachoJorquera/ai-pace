@@ -58,26 +58,30 @@ struct ClaudeProbe: Sendable {
             }
             return ProviderSnapshot(
                 provider: .claude,
-                fiveHour: UsageWindow(
-                    kind: .fiveHour,
-                    usedPercentage: usage.fiveHour?.utilization,
-                    resetsAt: parseISODate(usage.fiveHour?.resetsAt),
-                    message: usage.fiveHour == nil ? "No 5h limit returned." : nil
-                ),
-                weekly: UsageWindow(
-                    kind: .weekly,
-                    usedPercentage: usage.sevenDay?.utilization,
-                    resetsAt: parseISODate(usage.sevenDay?.resetsAt),
-                    message: usage.sevenDay == nil ? "No weekly limit returned." : nil
-                ),
+                windows: [
+                    UsageWindow(
+                        kind: .fiveHour,
+                        usedPercentage: usage.fiveHour?.utilization,
+                        resetsAt: parseISODate(usage.fiveHour?.resetsAt),
+                        message: usage.fiveHour == nil ? "No 5h limit returned." : nil
+                    ),
+                    UsageWindow(
+                        kind: .weekly,
+                        usedPercentage: usage.sevenDay?.utilization,
+                        resetsAt: parseISODate(usage.sevenDay?.resetsAt),
+                        message: usage.sevenDay == nil ? "No weekly limit returned." : nil
+                    ),
+                ],
                 detail: detailText(from: credentials, accountInfo: accountInfo)
             )
         } catch {
             let message = error.localizedDescription
             return ProviderSnapshot(
                 provider: .claude,
-                fiveHour: UsageWindow(kind: .fiveHour, usedPercentage: nil, resetsAt: nil, message: message),
-                weekly: UsageWindow(kind: .weekly, usedPercentage: nil, resetsAt: nil, message: message),
+                windows: [
+                    UsageWindow(kind: .fiveHour, usedPercentage: nil, resetsAt: nil, message: message),
+                    UsageWindow(kind: .weekly, usedPercentage: nil, resetsAt: nil, message: message),
+                ],
                 detail: nil
             )
         }

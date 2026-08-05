@@ -19,20 +19,35 @@ enum StatusItemFormatter {
     static func text(prefix: String, snapshot: ProviderSnapshot, mode: MenuBarDisplayMode) -> String {
         switch mode {
         case .usage:
-            return "\(prefix) \(compactValue(for: snapshot.fiveHour))/\(compactValue(for: snapshot.weekly))"
+            return compose(prefix, usageText(for: snapshot))
         case .remaining:
-            return "\(prefix) \(compactRemainingValue(for: snapshot.fiveHour))/\(compactRemainingValue(for: snapshot.weekly))"
+            return compose(prefix, remainingText(for: snapshot))
         case .insight:
-            let insight = WeeklyPacing.formattedDelta(for: snapshot.weekly) ?? "--"
-            return "\(prefix) \(insight)"
+            return compose(prefix, insightText(for: snapshot))
         case .usageAndInsight:
-            let usage = "\(compactValue(for: snapshot.fiveHour))/\(compactValue(for: snapshot.weekly))"
-            let insight = WeeklyPacing.formattedDelta(for: snapshot.weekly) ?? "--"
-            return "\(prefix) \(usage) \(insight)"
+            return compose(prefix, usageText(for: snapshot), insightText(for: snapshot))
         case .remainingAndInsight:
-            let remaining = "\(compactRemainingValue(for: snapshot.fiveHour))/\(compactRemainingValue(for: snapshot.weekly))"
-            let insight = WeeklyPacing.formattedDelta(for: snapshot.weekly) ?? "--"
-            return "\(prefix) \(remaining) \(insight)"
+            return compose(prefix, remainingText(for: snapshot), insightText(for: snapshot))
         }
+    }
+
+    /// One value per reported window, so the label grows and shrinks with the provider's quota count.
+    private static func usageText(for snapshot: ProviderSnapshot) -> String {
+        snapshot.windows.map { compactValue(for: $0) }.joined(separator: "/")
+    }
+
+    private static func remainingText(for snapshot: ProviderSnapshot) -> String {
+        snapshot.windows.map { compactRemainingValue(for: $0) }.joined(separator: "/")
+    }
+
+    private static func insightText(for snapshot: ProviderSnapshot) -> String {
+        guard let weekly = snapshot.weekly else {
+            return "--"
+        }
+        return WeeklyPacing.formattedDelta(for: weekly) ?? "--"
+    }
+
+    private static func compose(_ prefix: String, _ parts: String...) -> String {
+        ([prefix] + parts.filter { !$0.isEmpty }).joined(separator: " ")
     }
 }

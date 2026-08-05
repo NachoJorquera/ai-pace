@@ -46,6 +46,9 @@ enum ProviderDisplayName {
 enum UsageWindowKind: String {
     case fiveHour = "5h"
     case weekly = "Week"
+    /// A weekly window scoped to a single model. Its display label comes from the provider, so the
+    /// kind carries no model name of its own.
+    case scopedWeekly = "Model"
 }
 
 enum AgentAvailability: Equatable {
@@ -179,25 +182,34 @@ struct UsageWindow: Identifiable {
     var usedPercentage: Double?
     var resetsAt: Date?
     var message: String?
+    /// Provider-supplied display name, used by scoped windows. Takes precedence over the kind label.
+    var label: String?
 
-    var id: String { kind.rawValue }
+    var id: String { "\(kind.rawValue)-\(label ?? "")" }
 
     static func placeholder(_ kind: UsageWindowKind, message: String = "Loading…") -> UsageWindow {
         UsageWindow(kind: kind, usedPercentage: nil, resetsAt: nil, message: message)
     }
 }
 
+/// Holds however many windows a provider reports. Providers change how many quotas they expose, so
+/// the count is data, not structure: Codex reports one weekly window, Claude reports two plus an
+/// optional model-scoped one.
 struct ProviderSnapshot {
     let provider: ProviderKind
-    var fiveHour: UsageWindow
-    var weekly: UsageWindow
+    var windows: [UsageWindow]
     var detail: String?
+
+    var fiveHour: UsageWindow? { windows.first { $0.kind == .fiveHour } }
+    var weekly: UsageWindow? { windows.first { $0.kind == .weekly } }
+
+    var hasUsageData: Bool { windows.contains { $0.usedPercentage != nil } }
+    var firstMessage: String? { windows.lazy.compactMap(\.message).first }
 
     static func loading(_ provider: ProviderKind) -> ProviderSnapshot {
         ProviderSnapshot(
             provider: provider,
-            fiveHour: .placeholder(.fiveHour),
-            weekly: .placeholder(.weekly),
+            windows: [.placeholder(.fiveHour), .placeholder(.weekly)],
             detail: nil
         )
     }

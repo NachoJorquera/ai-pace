@@ -61,11 +61,11 @@ struct ClaudeProbeTests {
         ).fetch()
 
         #expect(snapshot.provider == .claude)
-        #expect(snapshot.fiveHour.usedPercentage == 25)
-        #expect(snapshot.weekly.usedPercentage == 60)
+        #expect(snapshot.fiveHour?.usedPercentage == 25)
+        #expect(snapshot.weekly?.usedPercentage == 60)
         #expect(snapshot.detail == "Max · Ada Lovelace")
-        #expect(snapshot.fiveHour.message == nil)
-        #expect(snapshot.weekly.message == nil)
+        #expect(snapshot.fiveHour?.message == nil)
+        #expect(snapshot.weekly?.message == nil)
     }
 
     @Test
@@ -93,8 +93,8 @@ struct ClaudeProbeTests {
             apiClient: apiClient
         ).fetch()
 
-        #expect(snapshot.fiveHour.message == "Claude is logged in, but credentials could not be read from file, Keychain, or environment.")
-        #expect(snapshot.weekly.message == snapshot.fiveHour.message)
+        #expect(snapshot.fiveHour?.message == "Claude is logged in, but credentials could not be read from file, Keychain, or environment.")
+        #expect(snapshot.weekly?.message == snapshot.fiveHour?.message)
     }
 
     @Test
@@ -162,8 +162,8 @@ struct ClaudeProbeTests {
             apiClient: apiClient
         ).fetch()
 
-        #expect(snapshot.fiveHour.usedPercentage == 30)
-        #expect(snapshot.weekly.usedPercentage == 55)
+        #expect(snapshot.fiveHour?.usedPercentage == 30)
+        #expect(snapshot.weekly?.usedPercentage == 55)
         let usageTokens = await state.usageTokens
         let refreshCalls = await state.refreshCalls
         #expect(usageTokens == ["old-token", "new-token"])
@@ -333,8 +333,8 @@ struct ClaudeProbeTests {
             apiClient: apiClient
         ).fetch()
 
-        #expect(snapshot.fiveHour.message == "Claude token was refreshed but could not be saved.")
-        #expect(snapshot.weekly.message == snapshot.fiveHour.message)
+        #expect(snapshot.fiveHour?.message == "Claude token was refreshed but could not be saved.")
+        #expect(snapshot.weekly?.message == snapshot.fiveHour?.message)
     }
 
     @Test

@@ -6,25 +6,29 @@ struct CodexProbe: Sendable {
             let limits = try await fetchRateLimits()
             return ProviderSnapshot(
                 provider: .codex,
-                fiveHour: UsageWindow(
-                    kind: .fiveHour,
-                    usedPercentage: limits.primary?.usedPercent,
-                    resetsAt: limits.primary?.resetsAt,
-                    message: limits.primary == nil ? "No 5h limit returned." : nil
-                ),
-                weekly: UsageWindow(
-                    kind: .weekly,
-                    usedPercentage: limits.secondary?.usedPercent,
-                    resetsAt: limits.secondary?.resetsAt,
-                    message: limits.secondary == nil ? "No weekly limit returned." : nil
-                ),
+                windows: [
+                    UsageWindow(
+                        kind: .fiveHour,
+                        usedPercentage: limits.primary?.usedPercent,
+                        resetsAt: limits.primary?.resetsAt,
+                        message: limits.primary == nil ? "No 5h limit returned." : nil
+                    ),
+                    UsageWindow(
+                        kind: .weekly,
+                        usedPercentage: limits.secondary?.usedPercent,
+                        resetsAt: limits.secondary?.resetsAt,
+                        message: limits.secondary == nil ? "No weekly limit returned." : nil
+                    ),
+                ],
                 detail: limits.planType.map { "Plan: \($0)" }
             )
         } catch {
             return ProviderSnapshot(
                 provider: .codex,
-                fiveHour: UsageWindow(kind: .fiveHour, usedPercentage: nil, resetsAt: nil, message: error.localizedDescription),
-                weekly: UsageWindow(kind: .weekly, usedPercentage: nil, resetsAt: nil, message: error.localizedDescription),
+                windows: [
+                    UsageWindow(kind: .fiveHour, usedPercentage: nil, resetsAt: nil, message: error.localizedDescription),
+                    UsageWindow(kind: .weekly, usedPercentage: nil, resetsAt: nil, message: error.localizedDescription),
+                ],
                 detail: nil
             )
         }

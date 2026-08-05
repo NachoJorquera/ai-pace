@@ -58,10 +58,10 @@ struct UsageStoreTests {
 
         await store.refresh()
 
-        #expect(store.claude.fiveHour.usedPercentage == 20)
-        #expect(store.claude.weekly.usedPercentage == 70)
-        #expect(store.codex.fiveHour.usedPercentage == 11)
-        #expect(store.codex.weekly.usedPercentage == 22)
+        #expect(store.claude.fiveHour?.usedPercentage == 20)
+        #expect(store.claude.weekly?.usedPercentage == 70)
+        #expect(store.codex.fiveHour?.usedPercentage == 11)
+        #expect(store.codex.weekly?.usedPercentage == 22)
         #expect(store.lastUpdated != nil)
     }
 
@@ -92,15 +92,15 @@ struct UsageStoreTests {
 
         await store.refresh()
 
-        #expect(store.claude.fiveHour.usedPercentage == 20)
-        #expect(store.claude.weekly.usedPercentage == 70)
+        #expect(store.claude.fiveHour?.usedPercentage == 20)
+        #expect(store.claude.weekly?.usedPercentage == 70)
         #expect(store.agentStatus(for: .claude).availability == .available)
 
         await store.refresh()
 
-        #expect(store.claude.fiveHour.usedPercentage == nil)
-        #expect(store.claude.weekly.usedPercentage == nil)
-        #expect(store.claude.fiveHour.message == "Claude authentication failed.")
+        #expect(store.claude.fiveHour?.usedPercentage == nil)
+        #expect(store.claude.weekly?.usedPercentage == nil)
+        #expect(store.claude.fiveHour?.message == "Claude authentication failed.")
         #expect(store.agentStatus(for: .claude).availability == .sessionExpired)
     }
 

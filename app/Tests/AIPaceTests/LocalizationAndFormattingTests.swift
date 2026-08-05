@@ -47,6 +47,41 @@ struct LocalizationAndFormattingTests {
     }
 
     @Test
+    func statusItemFormattingFollowsTheReportedWindowCount() {
+        let singleWindow = makeSnapshot(
+            .codex,
+            windows: [makeWindow(.weekly, used: 0, resetsAt: Date().addingTimeInterval(7 * 24 * 60 * 60))]
+        )
+        let threeWindows = makeSnapshot(
+            .claude,
+            windows: [
+                makeWindow(.fiveHour, used: 17),
+                makeWindow(.weekly, used: 11, resetsAt: Date().addingTimeInterval(3.5 * 24 * 60 * 60)),
+                makeWindow(.scopedWeekly, used: 10, label: "Fable"),
+            ]
+        )
+
+        #expect(StatusItemFormatter.text(prefix: "Cx", snapshot: singleWindow, mode: .usage) == "Cx 0")
+        #expect(StatusItemFormatter.text(prefix: "Cx", snapshot: singleWindow, mode: .remaining) == "Cx 100")
+        #expect(StatusItemFormatter.text(prefix: "Cl", snapshot: threeWindows, mode: .usage) == "Cl 17/11/10")
+        #expect(StatusItemFormatter.text(prefix: "Cl", snapshot: threeWindows, mode: .usageAndInsight) == "Cl 17/11/10 +39%")
+    }
+
+    @Test
+    func statusItemFormattingDegradesWhenNoWindowsAreReported() {
+        let empty = makeSnapshot(.codex, windows: [])
+
+        #expect(StatusItemFormatter.text(prefix: "Cx", snapshot: empty, mode: .usage) == "Cx")
+        #expect(StatusItemFormatter.text(prefix: "Cx", snapshot: empty, mode: .insight) == "Cx --")
+    }
+
+    @Test
+    func scopedWindowLabelFallsBackToLocalizedKind() {
+        #expect(Loc(lang: .spanish).windowLabel(.scopedWeekly) == "Modelo")
+        #expect(Loc(lang: .korean).windowLabel(.scopedWeekly) == "모델")
+    }
+
+    @Test
     func customAccentHexOverridesSelectedTheme() {
         let suiteName = "AIPaceTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
