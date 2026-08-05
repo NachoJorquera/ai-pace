@@ -173,7 +173,7 @@ enum ProcessRunner {
             let stdout = Pipe()
 
             process.executableURL = URL(fileURLWithPath: shell)
-            process.arguments = ["-l", "-c", "printf %s \"$PATH\""]
+            process.arguments = ["-i", "-l", "-c", "printf %s \"$PATH\""]
             process.standardOutput = stdout
             process.standardError = FileHandle.nullDevice
             process.environment = ProcessInfo.processInfo.environment
