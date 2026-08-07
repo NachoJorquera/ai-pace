@@ -462,6 +462,176 @@ struct Loc {
         }
     }
 
+    var updates: String {
+        switch lang {
+        case .english: return "Updates"
+        case .spanish: return "Actualizaciones"
+        case .french: return "Mises à jour"
+        case .german: return "Updates"
+        case .japanese: return "アップデート"
+        case .korean: return "업데이트"
+        case .chineseSimplified: return "更新"
+        }
+    }
+
+    var currentVersion: String {
+        switch lang {
+        case .english: return "Current version"
+        case .spanish: return "Versión actual"
+        case .french: return "Version actuelle"
+        case .german: return "Aktuelle Version"
+        case .japanese: return "現在のバージョン"
+        case .korean: return "현재 버전"
+        case .chineseSimplified: return "当前版本"
+        }
+    }
+
+    var checkForUpdates: String {
+        switch lang {
+        case .english: return "Check for Updates"
+        case .spanish: return "Buscar actualizaciones"
+        case .french: return "Rechercher les mises à jour"
+        case .german: return "Nach Updates suchen"
+        case .japanese: return "アップデートを確認"
+        case .korean: return "업데이트 확인"
+        case .chineseSimplified: return "检查更新"
+        }
+    }
+
+    var checkingForUpdates: String {
+        switch lang {
+        case .english: return "Checking for updates…"
+        case .spanish: return "Buscando actualizaciones…"
+        case .french: return "Recherche de mises à jour…"
+        case .german: return "Suche nach Updates…"
+        case .japanese: return "アップデートを確認中…"
+        case .korean: return "업데이트 확인 중…"
+        case .chineseSimplified: return "正在检查更新…"
+        }
+    }
+
+    var downloadUpdate: String {
+        switch lang {
+        case .english: return "Download"
+        case .spanish: return "Descargar"
+        case .french: return "Télécharger"
+        case .german: return "Laden"
+        case .japanese: return "ダウンロード"
+        case .korean: return "다운로드"
+        case .chineseSimplified: return "下载"
+        }
+    }
+
+    var showInFinder: String {
+        switch lang {
+        case .english: return "Show in Finder"
+        case .spanish: return "Mostrar en Finder"
+        case .french: return "Afficher dans le Finder"
+        case .german: return "Im Finder zeigen"
+        case .japanese: return "Finder に表示"
+        case .korean: return "Finder에서 보기"
+        case .chineseSimplified: return "在访达中显示"
+        }
+    }
+
+    var releaseNotes: String {
+        switch lang {
+        case .english: return "Release notes"
+        case .spanish: return "Notas de la versión"
+        case .french: return "Notes de version"
+        case .german: return "Versionshinweise"
+        case .japanese: return "リリースノート"
+        case .korean: return "릴리스 노트"
+        case .chineseSimplified: return "更新说明"
+        }
+    }
+
+    var updateDownloadedDesc: String {
+        switch lang {
+        case .english:
+            return "Saved to Downloads. Open the disk image, drag AIPace onto Applications, replace the old copy, and reopen the app."
+        case .spanish:
+            return "Guardado en Descargas. Abre la imagen de disco, arrastra AIPace a Aplicaciones, reemplaza la copia anterior y vuelve a abrir la app."
+        case .french:
+            return "Enregistré dans Téléchargements. Ouvrez l'image disque, glissez AIPace dans Applications, remplacez l'ancienne copie, puis rouvrez l'app."
+        case .german:
+            return "In „Downloads“ gesichert. Öffne das Image, zieh AIPace in „Programme“, ersetze die alte Kopie und öffne die App erneut."
+        case .japanese:
+            return "「ダウンロード」に保存しました。ディスクイメージを開き、AIPace を「アプリケーション」にドラッグして既存のコピーを置き換え、アプリを開き直してください。"
+        case .korean:
+            return "다운로드 폴더에 저장했습니다. 디스크 이미지를 열고 AIPace를 응용 프로그램으로 끌어다 기존 복사본을 교체한 뒤 앱을 다시 여세요."
+        case .chineseSimplified:
+            return "已保存到「下载」。打开磁盘映像，把 AIPace 拖到「应用程序」替换旧版本，然后重新打开应用。"
+        }
+    }
+
+    var updatesDesc: String {
+        switch lang {
+        case .english:
+            return "AIPace only checks when you ask it to. The disk image is downloaded from the project's GitHub releases and its checksum is verified."
+        case .spanish:
+            return "AIPace solo comprueba cuando se lo pides. La imagen de disco se descarga desde las releases de GitHub del proyecto y se verifica su checksum."
+        case .french:
+            return "AIPace ne vérifie que sur demande. L'image disque est téléchargée depuis les releases GitHub du projet et sa somme de contrôle est vérifiée."
+        case .german:
+            return "AIPace sucht nur auf Anforderung. Das Image wird aus den GitHub-Releases des Projekts geladen und seine Prüfsumme verifiziert."
+        case .japanese:
+            return "AIPace は指示したときだけ確認します。ディスクイメージはプロジェクトの GitHub リリースからダウンロードされ、チェックサムが検証されます。"
+        case .korean:
+            return "AIPace는 요청할 때만 확인합니다. 디스크 이미지는 프로젝트의 GitHub 릴리스에서 내려받고 체크섬을 검증합니다."
+        case .chineseSimplified:
+            return "AIPace 只在你要求时检查。磁盘映像从项目的 GitHub 发布页下载，并会校验其校验和。"
+        }
+    }
+
+    func upToDateMessage(version: String) -> String {
+        switch lang {
+        case .english: return "You are on the latest version (\(version))."
+        case .spanish: return "Estás en la última versión disponible (\(version))."
+        case .french: return "Vous utilisez la dernière version (\(version))."
+        case .german: return "Du verwendest die neueste Version (\(version))."
+        case .japanese: return "最新バージョン（\(version)）を使用しています。"
+        case .korean: return "최신 버전(\(version))을 사용 중입니다."
+        case .chineseSimplified: return "你正在使用最新版本（\(version)）。"
+        }
+    }
+
+    func updateAvailableMessage(version: String) -> String {
+        switch lang {
+        case .english: return "Version \(version) is available."
+        case .spanish: return "La versión \(version) está disponible."
+        case .french: return "La version \(version) est disponible."
+        case .german: return "Version \(version) ist verfügbar."
+        case .japanese: return "バージョン \(version) が利用できます。"
+        case .korean: return "버전 \(version)을(를) 사용할 수 있습니다."
+        case .chineseSimplified: return "版本 \(version) 可用。"
+        }
+    }
+
+    func downloadingMessage(percent: Int) -> String {
+        switch lang {
+        case .english: return "Downloading… \(percent)%"
+        case .spanish: return "Descargando… \(percent)%"
+        case .french: return "Téléchargement… \(percent)%"
+        case .german: return "Wird geladen… \(percent)%"
+        case .japanese: return "ダウンロード中… \(percent)%"
+        case .korean: return "다운로드 중… \(percent)%"
+        case .chineseSimplified: return "下载中… \(percent)%"
+        }
+    }
+
+    func updateFailedMessage(_ message: String) -> String {
+        switch lang {
+        case .english: return "Update check failed: \(message)"
+        case .spanish: return "No se pudo comprobar la actualización: \(message)"
+        case .french: return "Échec de la vérification des mises à jour : \(message)"
+        case .german: return "Update-Prüfung fehlgeschlagen: \(message)"
+        case .japanese: return "アップデートの確認に失敗しました: \(message)"
+        case .korean: return "업데이트 확인 실패: \(message)"
+        case .chineseSimplified: return "检查更新失败：\(message)"
+        }
+    }
+
     func windowLabel(_ kind: UsageWindowKind) -> String {
         switch kind {
         case .fiveHour:

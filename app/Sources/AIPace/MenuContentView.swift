@@ -396,6 +396,7 @@ struct SettingsView: View {
     @AppStorage("appLanguage") private var langID = AppLanguage.english.rawValue
     @AppStorage("menuBarDisplayMode") private var menuBarDisplayModeID = MenuBarDisplayMode.usage.rawValue
     @AppStorage("popoverDisplayMode") private var popoverDisplayModeID = PopoverDisplayMode.usage.rawValue
+    @StateObject private var updateController = UpdateController()
 
     private var lang: AppLanguage { AppLanguage(rawValue: langID) ?? .english }
     private var loc: Loc { Loc(lang: lang) }
@@ -605,6 +606,24 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, 136)
             }
+
+            settingsCard(title: loc.updates) {
+                settingRow(loc.currentVersion) {
+                    Text(updateController.currentVersionText)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 180, alignment: .trailing)
+                }
+
+                Divider()
+
+                UpdateActionsRow(controller: updateController, loc: loc)
+
+                Text(loc.updatesDesc)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
@@ -774,6 +793,121 @@ private struct PointerOnHoverModifier: ViewModifier {
 private extension View {
     func pointerOnHover() -> some View {
         modifier(PointerOnHoverModifier())
+    }
+}
+
+private struct UpdateActionsRow: View {
+    @ObservedObject var controller: UpdateController
+    let loc: Loc
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Button(loc.checkForUpdates) {
+                    controller.checkForUpdates()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(controller.isBusy)
+                .pointerOnHover()
+
+                if case .available(let release) = controller.state {
+                    Button(loc.downloadUpdate) {
+                        controller.download(release)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(release.downloadURL == nil)
+                    .pointerOnHover()
+
+                    Button(loc.releaseNotes) {
+                        controller.openReleasePage(release)
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .pointerOnHover()
+                }
+
+                if case .downloaded(let fileURL) = controller.state {
+                    Button(loc.showInFinder) {
+                        controller.revealInFinder(fileURL)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .pointerOnHover()
+                }
+
+                Spacer()
+            }
+
+            if case .downloading(let progress) = controller.state {
+                ProgressView(value: progress)
+                    .progressViewStyle(.linear)
+                    .frame(maxWidth: 240)
+            }
+
+            if let message = statusMessage {
+                HStack(alignment: .top, spacing: 6) {
+                    if let icon = statusIcon {
+                        Image(systemName: icon)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(statusColor)
+                            .padding(.top, 1)
+                    }
+
+                    Text(message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(statusColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var statusMessage: String? {
+        switch controller.state {
+        case .idle:
+            return nil
+        case .checking:
+            return loc.checkingForUpdates
+        case .upToDate:
+            return loc.upToDateMessage(version: controller.currentVersionText)
+        case .available(let release):
+            return loc.updateAvailableMessage(version: release.version.description)
+        case .downloading(let progress):
+            return loc.downloadingMessage(percent: Int((progress * 100).rounded()))
+        case .downloaded:
+            return loc.updateDownloadedDesc
+        case .failed(let message):
+            return loc.updateFailedMessage(message)
+        }
+    }
+
+    private var statusIcon: String? {
+        switch controller.state {
+        case .idle, .checking, .downloading:
+            return nil
+        case .upToDate, .downloaded:
+            return "checkmark.circle.fill"
+        case .available:
+            return "arrow.down.circle.fill"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var statusColor: Color {
+        switch controller.state {
+        case .idle, .checking, .downloading, .downloaded:
+            return .secondary
+        case .upToDate:
+            return .green
+        case .available:
+            return .blue
+        case .failed:
+            return .orange
+        }
     }
 }
 
