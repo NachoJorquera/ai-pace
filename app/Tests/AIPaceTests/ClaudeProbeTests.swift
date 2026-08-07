@@ -61,11 +61,11 @@ struct ClaudeProbeTests {
         ).fetch()
 
         #expect(snapshot.provider == .claude)
-        #expect(snapshot.fiveHour.usedPercentage == 25)
-        #expect(snapshot.weekly.usedPercentage == 60)
+        #expect(snapshot.fiveHour?.usedPercentage == 25)
+        #expect(snapshot.weekly?.usedPercentage == 60)
         #expect(snapshot.detail == "Max · Ada Lovelace")
-        #expect(snapshot.fiveHour.message == nil)
-        #expect(snapshot.weekly.message == nil)
+        #expect(snapshot.fiveHour?.message == nil)
+        #expect(snapshot.weekly?.message == nil)
     }
 
     @Test
@@ -93,8 +93,8 @@ struct ClaudeProbeTests {
             apiClient: apiClient
         ).fetch()
 
-        #expect(snapshot.fiveHour.message == "Claude is logged in, but credentials could not be read from file, Keychain, or environment.")
-        #expect(snapshot.weekly.message == snapshot.fiveHour.message)
+        #expect(snapshot.fiveHour?.message == "Claude is logged in, but credentials could not be read from file, Keychain, or environment.")
+        #expect(snapshot.weekly?.message == snapshot.fiveHour?.message)
     }
 
     @Test
@@ -162,8 +162,8 @@ struct ClaudeProbeTests {
             apiClient: apiClient
         ).fetch()
 
-        #expect(snapshot.fiveHour.usedPercentage == 30)
-        #expect(snapshot.weekly.usedPercentage == 55)
+        #expect(snapshot.fiveHour?.usedPercentage == 30)
+        #expect(snapshot.weekly?.usedPercentage == 55)
         let usageTokens = await state.usageTokens
         let refreshCalls = await state.refreshCalls
         #expect(usageTokens == ["old-token", "new-token"])
@@ -333,8 +333,8 @@ struct ClaudeProbeTests {
             apiClient: apiClient
         ).fetch()
 
-        #expect(snapshot.fiveHour.message == "Claude token was refreshed but could not be saved.")
-        #expect(snapshot.weekly.message == snapshot.fiveHour.message)
+        #expect(snapshot.fiveHour?.message == "Claude token was refreshed but could not be saved.")
+        #expect(snapshot.weekly?.message == snapshot.fiveHour?.message)
     }
 
     @Test
@@ -357,5 +357,140 @@ struct ClaudeProbeTests {
 
         #expect(missing["scope"] as? String == "user:profile user:inference user:sessions:claude_code")
         #expect(empty["scope"] as? String == "user:profile user:inference user:sessions:claude_code")
+    }
+
+    /// Verbatim payload shape returned by the live usage endpoint, including the experimental keys, so
+    /// the decoder is pinned against what the server actually sends.
+    @Test
+    func decodesLiveUsagePayloadIncludingScopedModelLimit() throws {
+        let json = """
+        {"five_hour":{"utilization":17.0,"resets_at":"2026-08-05T16:39:59.718894+00:00","limit_dollars":null},
+         "seven_day":{"utilization":11.0,"resets_at":"2026-08-11T09:59:59.718914+00:00","used_dollars":null},
+         "seven_day_opus":null,"seven_day_sonnet":null,"tangelo":null,"nimbus_quill":null,
+         "extra_usage":{"is_enabled":false,"monthly_limit":null},
+         "limits":[
+           {"kind":"session","group":"session","percent":17,"severity":"normal","resets_at":"2026-08-05T16:39:59.718894+00:00","scope":null,"is_active":true},
+           {"kind":"weekly_all","group":"weekly","percent":11,"severity":"normal","resets_at":"2026-08-11T09:59:59.718914+00:00","scope":null,"is_active":false},
+           {"kind":"weekly_scoped","group":"weekly","percent":10,"severity":"normal","resets_at":"2026-08-11T09:59:59.719165+00:00","scope":{"model":{"id":null,"display_name":"Fable"},"surface":null},"is_active":false}
+         ],
+         "spend":{"percent":0},"member_dashboard_available":false}
+        """
+
+        let usage = try JSONDecoder().decode(ClaudeUsageResponse.self, from: Data(json.utf8))
+
+        #expect(usage.fiveHour?.utilization == 17)
+        #expect(usage.sevenDay?.utilization == 11)
+        #expect(usage.limits?.count == 3)
+
+        let scoped = ClaudeProbe().scopedWindows(from: usage)
+
+        #expect(scoped.count == 1)
+        #expect(scoped.first?.kind == .scopedWeekly)
+        #expect(scoped.first?.label == "Fable")
+        #expect(scoped.first?.usedPercentage == 10)
+        #expect(scoped.first?.resetsAt != nil)
+        #expect(scoped.first?.message == nil)
+    }
+
+    @Test
+    func scopedWindowsIgnoreUnscopedKindsAndEntriesWithoutAPercent() {
+        let usage = ClaudeUsageResponse(
+            fiveHour: nil,
+            sevenDay: nil,
+            limits: [
+                ClaudeLimitEntry(kind: "session", percent: 17, resetsAt: nil, scope: nil),
+                ClaudeLimitEntry(kind: "weekly_all", percent: 11, resetsAt: nil, scope: nil),
+                ClaudeLimitEntry(
+                    kind: "weekly_scoped",
+                    percent: nil,
+                    resetsAt: nil,
+                    scope: ClaudeLimitScope(model: ClaudeLimitScopeModel(displayName: "Fable"))
+                ),
+            ]
+        )
+
+        #expect(ClaudeProbe().scopedWindows(from: usage).isEmpty)
+    }
+
+    @Test
+    func missingLimitsDegradesToTheTwoStandardWindows() {
+        let noLimits = ClaudeUsageResponse(fiveHour: nil, sevenDay: nil, limits: nil)
+        let emptyLimits = ClaudeUsageResponse(fiveHour: nil, sevenDay: nil, limits: [])
+
+        #expect(ClaudeProbe().scopedWindows(from: noLimits).isEmpty)
+        #expect(ClaudeProbe().scopedWindows(from: emptyLimits).isEmpty)
+    }
+
+    /// A malformed entry drops the whole `limits` array, but must not take the response down with it:
+    /// the two standard windows come from sibling keys and still work.
+    @Test
+    func malformedLimitsArrayIsDroppedWithoutFailingTheResponse() throws {
+        let json = """
+        {"five_hour":{"utilization":17.0,"resets_at":null},
+         "seven_day":{"utilization":11.0,"resets_at":null},
+         "limits":[
+           {"kind":"weekly_scoped","percent":"not-a-number","scope":{"model":{"display_name":"Fable"}}},
+           {"kind":"weekly_scoped","percent":10,"scope":{"model":{"display_name":"Iguana"}}}
+         ]}
+        """
+
+        let usage = try JSONDecoder().decode(ClaudeUsageResponse.self, from: Data(json.utf8))
+
+        #expect(usage.fiveHour?.utilization == 17)
+        #expect(usage.sevenDay?.utilization == 11)
+        #expect(usage.limits == nil)
+        #expect(ClaudeProbe().scopedWindows(from: usage).isEmpty)
+    }
+
+    @Test
+    func limitsOfAnUnexpectedTypeAreDiscardedWithoutFailing() throws {
+        let json = """
+        {"five_hour":{"utilization":17.0,"resets_at":null},"seven_day":null,"limits":{"unexpected":"object"}}
+        """
+
+        let usage = try JSONDecoder().decode(ClaudeUsageResponse.self, from: Data(json.utf8))
+
+        #expect(usage.fiveHour?.utilization == 17)
+        #expect(usage.limits == nil)
+    }
+
+    @Test
+    func fetchAppendsScopedWindowAfterTheStandardOnes() async throws {
+        let homeDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: homeDirectory) }
+
+        let loader = ClaudeCredentialLoader(
+            homeDirectory: homeDirectory,
+            environment: ["CLAUDE_CODE_OAUTH_TOKEN": "token-1"],
+            keychainLoadOverride: .success(nil)
+        )
+        let apiClient = ClaudeAPIClient(
+            fetchStatus: { ClaudeAuthStatus(loggedIn: nil) },
+            refreshToken: { credentials, _ in credentials },
+            fetchUsage: { _ in
+                ClaudeUsageResponse(
+                    fiveHour: ClaudeQuotaData(utilization: 17, resetsAt: nil),
+                    sevenDay: ClaudeQuotaData(utilization: 11, resetsAt: nil),
+                    limits: [
+                        ClaudeLimitEntry(
+                            kind: "weekly_scoped",
+                            percent: 10,
+                            resetsAt: nil,
+                            scope: ClaudeLimitScope(model: ClaudeLimitScopeModel(displayName: "Fable"))
+                        ),
+                    ]
+                )
+            }
+        )
+
+        let snapshot = await ClaudeProbe(
+            credentialLoader: loader,
+            accountInfoResolver: ClaudeAccountInfoResolver(configURL: homeDirectory.appendingPathComponent(".missing")),
+            apiClient: apiClient
+        ).fetch()
+
+        #expect(snapshot.windows.map(\.kind) == [.fiveHour, .weekly, .scopedWeekly])
+        #expect(snapshot.windows.map(\.usedPercentage) == [17, 11, 10])
+        #expect(StatusItemFormatter.text(prefix: "Cl", snapshot: snapshot, mode: .usage) == "Cl 17/11/10")
     }
 }

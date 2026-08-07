@@ -5,11 +5,14 @@ func makeWindow(
     _ kind: UsageWindowKind,
     used: Double? = nil,
     resetsAt: Date? = nil,
-    message: String? = nil
+    message: String? = nil,
+    label: String? = nil
 ) -> UsageWindow {
-    UsageWindow(kind: kind, usedPercentage: used, resetsAt: resetsAt, message: message)
+    UsageWindow(kind: kind, usedPercentage: used, resetsAt: resetsAt, message: message, label: label)
 }
 
+/// Builds the classic two-window snapshot (5h + weekly). Use `makeSnapshot(_:windows:)` for providers
+/// that report a different window count.
 func makeSnapshot(
     _ provider: ProviderKind,
     fiveHourUsed: Double? = nil,
@@ -20,12 +23,22 @@ func makeSnapshot(
     weeklyMessage: String? = nil,
     detail: String? = nil
 ) -> ProviderSnapshot {
-    ProviderSnapshot(
-        provider: provider,
-        fiveHour: makeWindow(.fiveHour, used: fiveHourUsed, resetsAt: fiveHourReset, message: fiveHourMessage),
-        weekly: makeWindow(.weekly, used: weeklyUsed, resetsAt: weeklyReset, message: weeklyMessage),
+    makeSnapshot(
+        provider,
+        windows: [
+            makeWindow(.fiveHour, used: fiveHourUsed, resetsAt: fiveHourReset, message: fiveHourMessage),
+            makeWindow(.weekly, used: weeklyUsed, resetsAt: weeklyReset, message: weeklyMessage),
+        ],
         detail: detail
     )
+}
+
+func makeSnapshot(
+    _ provider: ProviderKind,
+    windows: [UsageWindow],
+    detail: String? = nil
+) -> ProviderSnapshot {
+    ProviderSnapshot(provider: provider, windows: windows, detail: detail)
 }
 
 func makeTemporaryDirectory() throws -> URL {

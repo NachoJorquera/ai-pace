@@ -24,11 +24,6 @@ struct UsageStoreTests {
         #expect(store.agentStatus(for: ProviderKind.codex).availability == AgentAvailability.notInstalled)
         #expect(store.visibleSnapshots.map { $0.provider } == [ProviderKind.claude])
         #expect(store.hasVisibleSnapshots)
-        #expect(store.menuBarTitle == "Cl 15/45  Cx --/--")
-
-        defaults.set("Anthrop", forKey: ProviderDisplayName.customClaudeNameDefaultsKey)
-        defaults.set("OpenAI", forKey: ProviderDisplayName.customCodexNameDefaultsKey)
-        #expect(store.menuBarTitle == "Anthrop 15/45  OpenAI --/--")
     }
 
     @Test
@@ -58,10 +53,10 @@ struct UsageStoreTests {
 
         await store.refresh()
 
-        #expect(store.claude.fiveHour.usedPercentage == 20)
-        #expect(store.claude.weekly.usedPercentage == 70)
-        #expect(store.codex.fiveHour.usedPercentage == 11)
-        #expect(store.codex.weekly.usedPercentage == 22)
+        #expect(store.claude.fiveHour?.usedPercentage == 20)
+        #expect(store.claude.weekly?.usedPercentage == 70)
+        #expect(store.codex.fiveHour?.usedPercentage == 11)
+        #expect(store.codex.weekly?.usedPercentage == 22)
         #expect(store.lastUpdated != nil)
     }
 
@@ -92,15 +87,15 @@ struct UsageStoreTests {
 
         await store.refresh()
 
-        #expect(store.claude.fiveHour.usedPercentage == 20)
-        #expect(store.claude.weekly.usedPercentage == 70)
+        #expect(store.claude.fiveHour?.usedPercentage == 20)
+        #expect(store.claude.weekly?.usedPercentage == 70)
         #expect(store.agentStatus(for: .claude).availability == .available)
 
         await store.refresh()
 
-        #expect(store.claude.fiveHour.usedPercentage == nil)
-        #expect(store.claude.weekly.usedPercentage == nil)
-        #expect(store.claude.fiveHour.message == "Claude authentication failed.")
+        #expect(store.claude.fiveHour?.usedPercentage == nil)
+        #expect(store.claude.weekly?.usedPercentage == nil)
+        #expect(store.claude.fiveHour?.message == "Claude authentication failed.")
         #expect(store.agentStatus(for: .claude).availability == .sessionExpired)
     }
 

@@ -3,6 +3,7 @@ import Foundation
 struct ClaudeProbe: Sendable {
     static let oauthClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
     static let defaultRefreshScopes = ["user:profile", "user:inference", "user:sessions:claude_code"]
+    static let scopedWeeklyLimitKind = "weekly_scoped"
 
     private let credentialLoader: ClaudeCredentialLoader
     private let accountInfoResolver: ClaudeAccountInfoResolver
@@ -58,26 +59,30 @@ struct ClaudeProbe: Sendable {
             }
             return ProviderSnapshot(
                 provider: .claude,
-                fiveHour: UsageWindow(
-                    kind: .fiveHour,
-                    usedPercentage: usage.fiveHour?.utilization,
-                    resetsAt: parseISODate(usage.fiveHour?.resetsAt),
-                    message: usage.fiveHour == nil ? "No 5h limit returned." : nil
-                ),
-                weekly: UsageWindow(
-                    kind: .weekly,
-                    usedPercentage: usage.sevenDay?.utilization,
-                    resetsAt: parseISODate(usage.sevenDay?.resetsAt),
-                    message: usage.sevenDay == nil ? "No weekly limit returned." : nil
-                ),
+                windows: [
+                    UsageWindow(
+                        kind: .fiveHour,
+                        usedPercentage: usage.fiveHour?.utilization,
+                        resetsAt: parseISODate(usage.fiveHour?.resetsAt),
+                        message: usage.fiveHour == nil ? "No 5h limit returned." : nil
+                    ),
+                    UsageWindow(
+                        kind: .weekly,
+                        usedPercentage: usage.sevenDay?.utilization,
+                        resetsAt: parseISODate(usage.sevenDay?.resetsAt),
+                        message: usage.sevenDay == nil ? "No weekly limit returned." : nil
+                    ),
+                ] + scopedWindows(from: usage),
                 detail: detailText(from: credentials, accountInfo: accountInfo)
             )
         } catch {
             let message = error.localizedDescription
             return ProviderSnapshot(
                 provider: .claude,
-                fiveHour: UsageWindow(kind: .fiveHour, usedPercentage: nil, resetsAt: nil, message: message),
-                weekly: UsageWindow(kind: .weekly, usedPercentage: nil, resetsAt: nil, message: message),
+                windows: [
+                    UsageWindow(kind: .fiveHour, usedPercentage: nil, resetsAt: nil, message: message),
+                    UsageWindow(kind: .weekly, usedPercentage: nil, resetsAt: nil, message: message),
+                ],
                 detail: nil
             )
         }
@@ -210,6 +215,29 @@ struct ClaudeProbe: Sendable {
         }
     }
 
+    /// Builds a window per model-scoped weekly limit. The model name is whatever the server reports,
+    /// never a hardcoded one, because `scope.model.id` comes back null and only the display name
+    /// identifies the model.
+    ///
+    /// Deliberately ignores `is_active`: the server sends it as false on both weekly entries while
+    /// only the session entry is true, so filtering on it would hide these windows entirely.
+    func scopedWindows(from usage: ClaudeUsageResponse) -> [UsageWindow] {
+        (usage.limits ?? [])
+            .filter { $0.kind == Self.scopedWeeklyLimitKind }
+            .compactMap { entry in
+                guard let percent = entry.percent else {
+                    return nil
+                }
+                return UsageWindow(
+                    kind: .scopedWeekly,
+                    usedPercentage: percent,
+                    resetsAt: parseISODate(entry.resetsAt),
+                    message: nil,
+                    label: entry.scope?.model?.displayName
+                )
+            }
+    }
+
     func parseISODate(_ isoString: String?) -> Date? {
         guard let isoString else {
             return nil
@@ -277,10 +305,56 @@ struct ClaudeAuthStatus: Decodable, Sendable {
 struct ClaudeUsageResponse: Decodable, Sendable {
     let fiveHour: ClaudeQuotaData?
     let sevenDay: ClaudeQuotaData?
+    /// Per-limit breakdown. Superset of `fiveHour`/`sevenDay`, and the only place model-scoped quotas
+    /// appear. Undocumented and in flux, so it is treated as optional everywhere.
+    let limits: [ClaudeLimitEntry]?
 
     enum CodingKeys: String, CodingKey {
         case fiveHour = "five_hour"
         case sevenDay = "seven_day"
+        case limits
+    }
+
+    init(fiveHour: ClaudeQuotaData?, sevenDay: ClaudeQuotaData?, limits: [ClaudeLimitEntry]? = nil) {
+        self.fiveHour = fiveHour
+        self.sevenDay = sevenDay
+        self.limits = limits
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fiveHour = try container.decodeIfPresent(ClaudeQuotaData.self, forKey: .fiveHour)
+        sevenDay = try container.decodeIfPresent(ClaudeQuotaData.self, forKey: .sevenDay)
+        // Anything malformed in `limits` drops the whole array rather than failing the response and
+        // taking the two windows that already work down with it.
+        limits = try? container.decodeIfPresent([ClaudeLimitEntry].self, forKey: .limits)
+    }
+}
+
+struct ClaudeLimitEntry: Decodable, Sendable {
+    let kind: String?
+    let percent: Double?
+    let resetsAt: String?
+    let scope: ClaudeLimitScope?
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case percent
+        case resetsAt = "resets_at"
+        case scope
+    }
+}
+
+struct ClaudeLimitScope: Decodable, Sendable {
+    let model: ClaudeLimitScopeModel?
+}
+
+struct ClaudeLimitScopeModel: Decodable, Sendable {
+    /// The only usable model identifier here: `id` comes back null.
+    let displayName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case displayName = "display_name"
     }
 }
 

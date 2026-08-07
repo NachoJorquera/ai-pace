@@ -6,6 +6,22 @@ The format is based on Keep a Changelog, and this project follows semantic versi
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-06
+
+### Added
+- Claude model-scoped weekly usage is now shown as a third window, labeled with the model name the server reports, so the menu bar reads `Cl 17/11/10`
+
+### Changed
+- Providers now report however many usage windows they actually have instead of a fixed 5h plus weekly pair
+- Codex usage windows are classified by the duration Codex reports rather than by their position in the response. Codex dropped its 5h quota, so its single weekly window now reads `Cx 0` instead of `Cx 0/--`, and the popover shows one bar instead of a second one reading "No weekly limit returned."
+- Pacing insight now works for Codex, since its window is finally typed as weekly
+
+### Fixed
+- Test suite links again: `swift-testing` is pinned below 6.3.0, whose development snapshot fails to link `_TestingInterop` against the release Swift 6.3.3 toolchain
+
+### Notes
+- The Codex refresh notification toggle moves from the 5h window to the weekly one, so an enabled 5h toggle for Codex needs to be re-enabled once
+
 ## [1.1.3] - 2026-08-05
 
 ### Fixed

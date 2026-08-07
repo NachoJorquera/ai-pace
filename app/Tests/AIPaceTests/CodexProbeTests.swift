@@ -19,11 +19,95 @@ struct CodexProbeTests {
         let window = probe.parseWindow([
             "usedPercent": "62.5",
             "resetsAt": 1_710_000_000,
+            "windowDurationMins": 10080,
         ])
 
         #expect(window?.usedPercent == 62.5)
         #expect(window?.resetsAt == Date(timeIntervalSince1970: 1_710_000_000))
+        #expect(window?.windowDurationMins == 10080)
         #expect(probe.parseWindow(["resetsAt": 1_710_000_000]) == nil)
+        #expect(probe.parseWindow(["usedPercent": 1])?.windowDurationMins == nil)
+        #expect(probe.parseWindow(["usedPercent": 1, "windowDurationMins": "300"])?.windowDurationMins == 300)
+    }
+
+    @Test
+    func weeklyOnlyPlanYieldsASingleWeeklyWindow() {
+        let probe = CodexProbe()
+        let resetsAt = Date(timeIntervalSince1970: 1_786_545_388)
+        let limits = CodexRateLimits(
+            primary: CodexRateLimitWindow(usedPercent: 42, resetsAt: resetsAt, windowDurationMins: 10080),
+            secondary: nil,
+            planType: "plus"
+        )
+
+        let windows = probe.usageWindows(from: limits)
+
+        #expect(windows.count == 1)
+        #expect(windows.first?.kind == .weekly)
+        #expect(windows.first?.usedPercentage == 42)
+        #expect(windows.first?.resetsAt == resetsAt)
+    }
+
+    @Test
+    func legacyTwoWindowPlanIsClassifiedByDuration() {
+        let probe = CodexProbe()
+        let limits = CodexRateLimits(
+            primary: CodexRateLimitWindow(usedPercent: 10, resetsAt: nil, windowDurationMins: 300),
+            secondary: CodexRateLimitWindow(usedPercent: 20, resetsAt: nil, windowDurationMins: 10080),
+            planType: nil
+        )
+
+        let windows = probe.usageWindows(from: limits)
+
+        #expect(windows.map(\.kind) == [.fiveHour, .weekly])
+        #expect(windows.map(\.usedPercentage) == [10, 20])
+    }
+
+    @Test
+    func missingDurationFallsBackToPositionalMapping() {
+        let probe = CodexProbe()
+        let limits = CodexRateLimits(
+            primary: CodexRateLimitWindow(usedPercent: 10, resetsAt: nil, windowDurationMins: nil),
+            secondary: CodexRateLimitWindow(usedPercent: 20, resetsAt: nil, windowDurationMins: nil),
+            planType: nil
+        )
+
+        #expect(probe.usageWindows(from: limits).map(\.kind) == [.fiveHour, .weekly])
+        #expect(CodexProbe.windowKind(forDurationMins: nil, fallback: .weekly) == .weekly)
+        #expect(CodexProbe.windowKind(forDurationMins: 300, fallback: .weekly) == .fiveHour)
+        #expect(CodexProbe.windowKind(forDurationMins: 1440, fallback: .fiveHour) == .weekly)
+    }
+
+    @Test
+    func collidingDurationsKeepBothWindowsViaPositionalFallback() {
+        let probe = CodexProbe()
+        let limits = CodexRateLimits(
+            primary: CodexRateLimitWindow(usedPercent: 10, resetsAt: nil, windowDurationMins: 10080),
+            secondary: CodexRateLimitWindow(usedPercent: 20, resetsAt: nil, windowDurationMins: 10080),
+            planType: nil
+        )
+
+        let windows = probe.usageWindows(from: limits)
+
+        #expect(windows.count == 2)
+        #expect(windows.map(\.kind) == [.fiveHour, .weekly])
+    }
+
+    @Test
+    func noReportedWindowsYieldsOneWeeklyWindowCarryingTheMessage() {
+        let probe = CodexProbe()
+        let limits = CodexRateLimits(primary: nil, secondary: nil, planType: "plus")
+
+        #expect(probe.usageWindows(from: limits).isEmpty)
+
+        let snapshot = ProviderSnapshot(
+            provider: .codex,
+            windows: [UsageWindow(kind: .weekly, usedPercentage: nil, resetsAt: nil, message: "No usage limits returned.")],
+            detail: nil
+        )
+
+        #expect(snapshot.hasUsageData == false)
+        #expect(snapshot.firstMessage == "No usage limits returned.")
     }
 
     @Test

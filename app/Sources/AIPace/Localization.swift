@@ -481,6 +481,17 @@ struct Loc {
             case .korean: return "주간"
             case .chineseSimplified: return "周"
             }
+        case .scopedWeekly:
+            // Fallback only: scoped windows normally display the model name the provider sends.
+            switch lang {
+            case .english: return "Model"
+            case .spanish: return "Modelo"
+            case .french: return "Modèle"
+            case .german: return "Modell"
+            case .japanese: return "モデル"
+            case .korean: return "모델"
+            case .chineseSimplified: return "模型"
+            }
         }
     }
 
