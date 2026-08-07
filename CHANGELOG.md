@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project follows semantic versi
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-06
+
 ### Added
 - Claude model-scoped weekly usage is now shown as a third window, labeled with the model name the server reports, so the menu bar reads `Cl 17/11/10`
 
