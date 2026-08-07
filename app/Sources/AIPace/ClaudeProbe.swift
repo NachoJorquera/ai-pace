@@ -325,19 +325,9 @@ struct ClaudeUsageResponse: Decodable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         fiveHour = try container.decodeIfPresent(ClaudeQuotaData.self, forKey: .fiveHour)
         sevenDay = try container.decodeIfPresent(ClaudeQuotaData.self, forKey: .sevenDay)
-        // Decoded leniently: a malformed entry drops itself rather than failing the whole response
-        // and taking the two windows that already work down with it.
-        limits = (try? container.decodeIfPresent([FailableLimitEntry].self, forKey: .limits))?
-            .compactMap(\.entry)
-    }
-}
-
-/// Wrapper that turns a per-entry decoding failure into a nil instead of an error.
-private struct FailableLimitEntry: Decodable {
-    let entry: ClaudeLimitEntry?
-
-    init(from decoder: any Decoder) throws {
-        entry = try? ClaudeLimitEntry(from: decoder)
+        // Anything malformed in `limits` drops the whole array rather than failing the response and
+        // taking the two windows that already work down with it.
+        limits = try? container.decodeIfPresent([ClaudeLimitEntry].self, forKey: .limits)
     }
 }
 

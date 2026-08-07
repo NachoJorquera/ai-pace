@@ -421,10 +421,10 @@ struct ClaudeProbeTests {
         #expect(ClaudeProbe().scopedWindows(from: emptyLimits).isEmpty)
     }
 
-    /// A malformed entry must not take the whole response down, because the two standard windows are
-    /// decoded from sibling keys and still work.
+    /// A malformed entry drops the whole `limits` array, but must not take the response down with it:
+    /// the two standard windows come from sibling keys and still work.
     @Test
-    func malformedLimitEntryDoesNotFailTheWholeResponse() throws {
+    func malformedLimitsArrayIsDroppedWithoutFailingTheResponse() throws {
         let json = """
         {"five_hour":{"utilization":17.0,"resets_at":null},
          "seven_day":{"utilization":11.0,"resets_at":null},
@@ -435,11 +435,11 @@ struct ClaudeProbeTests {
         """
 
         let usage = try JSONDecoder().decode(ClaudeUsageResponse.self, from: Data(json.utf8))
-        let scoped = ClaudeProbe().scopedWindows(from: usage)
 
         #expect(usage.fiveHour?.utilization == 17)
         #expect(usage.sevenDay?.utilization == 11)
-        #expect(scoped.map(\.label) == ["Iguana"])
+        #expect(usage.limits == nil)
+        #expect(ClaudeProbe().scopedWindows(from: usage).isEmpty)
     }
 
     @Test
