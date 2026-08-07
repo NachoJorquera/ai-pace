@@ -62,14 +62,6 @@ final class UsageStore: ObservableObject {
         refreshTask?.cancel()
     }
 
-    var menuBarTitle: String {
-        let claudeName = ProviderDisplayName.displayName(for: .claude, userDefaults: userDefaults)
-        let codexName = ProviderDisplayName.displayName(for: .codex, userDefaults: userDefaults)
-        let claudeText = StatusItemFormatter.text(prefix: claudeName, snapshot: claude, mode: .usage)
-        let codexText = StatusItemFormatter.text(prefix: codexName, snapshot: codex, mode: .usage)
-        return "\(claudeText)  \(codexText)"
-    }
-
     var visibleSnapshots: [ProviderSnapshot] {
         [claude, codex].filter { agentStatus(for: $0.provider).availability.showsInPopover }
     }

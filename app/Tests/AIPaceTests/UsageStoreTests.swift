@@ -24,11 +24,6 @@ struct UsageStoreTests {
         #expect(store.agentStatus(for: ProviderKind.codex).availability == AgentAvailability.notInstalled)
         #expect(store.visibleSnapshots.map { $0.provider } == [ProviderKind.claude])
         #expect(store.hasVisibleSnapshots)
-        #expect(store.menuBarTitle == "Cl 15/45  Cx --/--")
-
-        defaults.set("Anthrop", forKey: ProviderDisplayName.customClaudeNameDefaultsKey)
-        defaults.set("OpenAI", forKey: ProviderDisplayName.customCodexNameDefaultsKey)
-        #expect(store.menuBarTitle == "Anthrop 15/45  OpenAI --/--")
     }
 
     @Test
