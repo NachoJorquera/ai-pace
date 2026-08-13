@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this project follows semantic versi
 
 ## [Unreleased]
 
+### Added
+- Updates section at the end of Settings: shows the running version, checks the project's GitHub releases on demand, and reports that you are on the latest version when there is nothing newer
+- When a newer release exists, its DMG can be downloaded from inside the app to the Downloads folder, with progress and SHA-256 verification against the checksum GitHub publishes; installing it is still a manual drag into Applications
+
 ## [1.3.0] - 2026-08-06
 
 ### Added
