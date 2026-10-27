@@ -9,3 +9,5 @@ DerivedData/
 *.app
 *.dmg
 dist/
+AGENTS.md
+CLAUDE.local.md

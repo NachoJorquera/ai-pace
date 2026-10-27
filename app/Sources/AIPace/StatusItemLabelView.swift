@@ -1,11 +1,28 @@
 import SwiftUI
 
+enum StatusItemAppearance {
+    static let darkModeWhenNotFocusedDefaultsKey = "darkModeWhenNotFocused"
+    static let unfocusedClaudeAccentDefaultsKey = "unfocusedClaudeAccentHex"
+    static let unfocusedCodexAccentDefaultsKey = "unfocusedCodexAccentHex"
+
+    static func usesUnfocusedColors(darkModeWhenNotFocused: Bool, isPopoverShown: Bool) -> Bool {
+        darkModeWhenNotFocused && !isPopoverShown
+    }
+
+    static func unfocusedAccent(from hexValue: String?) -> Color {
+        AppColorHex.color(from: hexValue) ?? .black
+    }
+}
+
 struct StatusItemLabelView: View {
     nonisolated static let defaultFallbackText = "AIPace"
 
     let claudeText: String?
     let codexText: String?
     let theme: AppTheme
+    let usesUnfocusedColors: Bool
+    let unfocusedClaudeAccent: Color
+    let unfocusedCodexAccent: Color
 
     var body: some View {
         let visibleClaudeText = Self.visibleText(claudeText)
@@ -13,16 +30,34 @@ struct StatusItemLabelView: View {
 
         HStack(spacing: 6) {
             if let claudeText = visibleClaudeText {
-                pill(text: claudeText, color: theme.claudeAccent)
+                pill(
+                    text: claudeText,
+                    color: resolvedColor(
+                        focused: theme.claudeAccent,
+                        unfocused: unfocusedClaudeAccent
+                    )
+                )
             }
             if let codexText = visibleCodexText {
-                pill(text: codexText, color: theme.codexAccent)
+                pill(
+                    text: codexText,
+                    color: resolvedColor(
+                        focused: theme.codexAccent,
+                        unfocused: unfocusedCodexAccent
+                    )
+                )
             }
             if let fallbackText = Self.resolvedFallbackText(
                 claudeText: visibleClaudeText,
                 codexText: visibleCodexText
             ) {
-                pill(text: fallbackText, color: Color(red: 0.36, green: 0.38, blue: 0.42))
+                pill(
+                    text: fallbackText,
+                    color: resolvedColor(
+                        focused: Color(red: 0.36, green: 0.38, blue: 0.42),
+                        unfocused: .black
+                    )
+                )
             }
         }
         .padding(.horizontal, 4)
@@ -55,5 +90,9 @@ struct StatusItemLabelView: View {
                 Capsule(style: .continuous)
                     .fill(color)
             )
+    }
+
+    private func resolvedColor(focused: Color, unfocused: Color) -> Color {
+        usesUnfocusedColors ? unfocused : focused
     }
 }

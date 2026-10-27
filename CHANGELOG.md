@@ -9,6 +9,7 @@ The format is based on Keep a Changelog, and this project follows semantic versi
 ### Added
 - Updates section at the end of Settings: shows the running version, checks the project's GitHub releases on demand, and reports that you are on the latest version when there is nothing newer
 - When a newer release exists, its DMG can be downloaded from inside the app to the Downloads folder, with progress and SHA-256 verification against the checksum GitHub publishes; installing it is still a manual drag into Applications
+- Dark mode when not focused: an option under Colors in Settings that paints the menu bar pills with their own Claude and Codex colors (black by default) while the popover is closed, and returns to the theme colors while it is open
 
 ## [1.3.0] - 2026-08-06
 

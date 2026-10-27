@@ -246,7 +246,13 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
 
         let themeID = UserDefaults.standard.string(forKey: "selectedTheme") ?? AppTheme.defaultTheme.id
         let theme = AppTheme.resolvedTheme(themeID: themeID)
-        let view = statusLabelView(theme: theme)
+        let usesUnfocusedColors = StatusItemAppearance.usesUnfocusedColors(
+            darkModeWhenNotFocused: UserDefaults.standard.bool(
+                forKey: StatusItemAppearance.darkModeWhenNotFocusedDefaultsKey
+            ),
+            isPopoverShown: popover.isShown
+        )
+        let view = statusLabelView(theme: theme, usesUnfocusedColors: usesUnfocusedColors)
         let renderer = ImageRenderer(content: view)
         renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
 
@@ -270,7 +276,10 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
         statusItem?.length = Self.statusItemLength(forContentWidth: image.size.width)
     }
 
-    private func statusLabelView(theme: AppTheme? = nil) -> StatusItemLabelView {
+    private func statusLabelView(
+        theme: AppTheme? = nil,
+        usesUnfocusedColors: Bool = false
+    ) -> StatusItemLabelView {
         let resolvedTheme = theme ?? AppTheme.resolvedTheme(
             themeID: UserDefaults.standard.string(forKey: "selectedTheme") ?? AppTheme.defaultTheme.id
         )
@@ -297,7 +306,18 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
         return StatusItemLabelView(
             claudeText: claudeText,
             codexText: codexText,
-            theme: resolvedTheme
+            theme: resolvedTheme,
+            usesUnfocusedColors: usesUnfocusedColors,
+            unfocusedClaudeAccent: StatusItemAppearance.unfocusedAccent(
+                from: UserDefaults.standard.string(
+                    forKey: StatusItemAppearance.unfocusedClaudeAccentDefaultsKey
+                )
+            ),
+            unfocusedCodexAccent: StatusItemAppearance.unfocusedAccent(
+                from: UserDefaults.standard.string(
+                    forKey: StatusItemAppearance.unfocusedCodexAccentDefaultsKey
+                )
+            )
         )
     }
 
@@ -389,6 +409,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
 
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        updateButtonTitle()
         startPopoverDismissMonitoring()
         Task {
             await store.refreshNotificationAuthorizationState()
@@ -421,6 +442,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
 
     func popoverDidClose(_ notification: Notification) {
         stopPopoverDismissMonitoring()
+        updateButtonTitle()
     }
 
     @objc private func openSettingsFromMenu(_ sender: Any?) {
