@@ -16,6 +16,8 @@ swift test --filter ClaudeProbeTests/refreshRequestBodyUsesStoredScopes   # one 
 
 `./scripts/test.sh` runs the suite from the repo root and exports `DEVELOPER_DIR` first; it forwards arguments to `swift test`.
 
+To try a change in the real app without packaging, run the debug build from a terminal in `app/`: `swift build && "$(swift build --show-bin-path)/AIPace"`.
+
 Packaging builds the `.app` bundle and a DMG into `dist/`:
 
 ```bash
