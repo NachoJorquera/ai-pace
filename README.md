@@ -84,6 +84,7 @@ AIPace uses `codex app-server` with your existing Codex login. It launches from 
 - **Local only**: credentials come from your existing CLI auth state
 - **Direct connections**: requests go from your Mac to provider endpoints
 - **No syncing**: tokens stay on your machine
+- **Manual update checks**: the only other host AIPace contacts is GitHub, and only when you press *Check for Updates* in Settings
 
 This app depends on local auth state and provider APIs that can change. If you use it in a security-sensitive environment, review the code first.
 
@@ -111,6 +112,10 @@ If you need to override the stamped version for a specific build, pass `--versio
 ```bash
 cd app && swift run
 ```
+
+### Updating
+
+Settings has an **Updates** section at the bottom. It shows the running version and, when you press *Check for Updates*, compares it against the latest published release. If a newer one exists you can download its DMG straight from there: it lands in `Downloads`, its SHA-256 is verified against the checksum GitHub publishes, and you install it by dragging `AIPace` into `Applications` over the old copy. Nothing is checked or downloaded unless you ask for it.
 
 After launch, look for the Claude and Codex stats in your menu bar.
 
