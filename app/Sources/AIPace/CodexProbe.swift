@@ -5,6 +5,17 @@ struct CodexProbe: Sendable {
     /// for its weekly window and 300 for the 5h one, so the threshold sits far from both.
     static let minimumWeeklyDurationMins: Double = 1440
 
+    /// Seconds the app-server gets to answer before it is killed, so a stuck process cannot hold the
+    /// refresh, and with it Claude's, forever.
+    private let responseTimeout: TimeInterval
+    /// Replaces the PATH lookup for `codex`; tests point it at a stand-in script.
+    private let executableOverride: String?
+
+    init(responseTimeout: TimeInterval = 30, executableOverride: String? = nil) {
+        self.responseTimeout = responseTimeout
+        self.executableOverride = executableOverride
+    }
+
     func fetch() async -> ProviderSnapshot {
         do {
             let limits = try await fetchRateLimits()
@@ -66,7 +77,7 @@ struct CodexProbe: Sendable {
     }
 
     private func fetchRateLimits() async throws -> CodexRateLimits {
-        guard let executable = ProcessRunner.which("codex") else {
+        guard let executable = executableOverride ?? ProcessRunner.which("codex") else {
             throw ProcessRunnerError.executableNotFound("codex")
         }
 
@@ -89,6 +100,29 @@ struct CodexProbe: Sendable {
             }
         }
 
+        // Killing the app-server closes its stdout, which ends the pending read with an error.
+        let watchdog = Task { [responseTimeout] in
+            try? await Task.sleep(for: .seconds(responseTimeout))
+            guard !Task.isCancelled else { return false }
+            process.terminate()
+            return true
+        }
+
+        do {
+            let limits = try await requestRateLimits(stdin: stdin, stdout: stdout)
+            watchdog.cancel()
+            return limits
+        } catch {
+            watchdog.cancel()
+            guard await watchdog.value else { throw error }
+            throw ProcessRunnerError.invalidResponse(
+                "Codex app-server did not respond within \(Int(responseTimeout)) seconds."
+            )
+        }
+    }
+
+    /// Runs the JSON-RPC handshake and the rate limit request against a running app-server.
+    private func requestRateLimits(stdin: Pipe, stdout: Pipe) async throws -> CodexRateLimits {
         try writeJSONLine([
             "jsonrpc": "2.0",
             "id": 1,

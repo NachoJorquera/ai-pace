@@ -76,6 +76,8 @@ Spawns `codex -s read-only -a never app-server` from the user's home directory (
 
 Current codex-cli accepts only `on-request` and `never` for `-a`. Any other value makes the process exit during argument parsing, before it answers `initialize`. Codex then drops out of the popover and Settings shows "Codex app-server closed before returning response id 1."
 
+The exchange has a 30 s deadline (`responseTimeout`). When it expires, the app-server is killed and Settings shows "Codex app-server did not respond within 30 seconds.", which tells a hang apart from the argument rejection above.
+
 Window kind is derived from `windowDurationMins` (10080 = weekly, 300 = 5h), not from `primary`/`secondary` position, because Codex dropped its 5h quota and `primary` is now the weekly window. Falls back to positional mapping when the duration is absent or when both windows would classify to the same kind.
 
 ### Updates
