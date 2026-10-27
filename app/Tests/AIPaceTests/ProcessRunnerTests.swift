@@ -44,4 +44,22 @@ struct ProcessRunnerTests {
         #expect(ProcessRunner.which("demo-tool", directories: [directory.path]) == executable.path)
         #expect(ProcessRunner.which("missing-tool", directories: [directory.path]) == nil)
     }
+
+    @Test
+    func loginShellPathGivesUpOnAStoppedShell() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        // Stops itself like a shell fighting over a terminal. It resumes after 20 s so a probe
+        // without the timeout fails on elapsed time instead of hanging the suite.
+        let shell = directory.appendingPathComponent("stopping-shell")
+        try Data("#!/bin/sh\n(sleep 20; kill -CONT $$) &\nkill -STOP $$\nprintf /stale/bin\n".utf8).write(to: shell)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shell.path)
+
+        let start = Date()
+        let path = ProcessRunner.loginShellPath(shellCandidates: [shell.path], timeout: 0.5)
+
+        #expect(path == nil)
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
 }
