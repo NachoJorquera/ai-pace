@@ -64,7 +64,9 @@ The usage endpoint (`GET https://api.anthropic.com/api/oauth/usage`) is undocume
 
 ### Codex probe
 
-Spawns `codex -s read-only -a untrusted app-server` from the user's home directory (avoids workspace trust prompts) and speaks JSON-RPC over stdin/stdout: `initialize`, `initialized`, then `account/rateLimits/read`.
+Spawns `codex -s read-only -a never app-server` from the user's home directory (avoids workspace trust prompts) and speaks JSON-RPC over stdin/stdout: `initialize`, `initialized`, then `account/rateLimits/read`.
+
+Current codex-cli accepts only `on-request` and `never` for `-a`. Any other value makes the process exit during argument parsing, before it answers `initialize`. Codex then drops out of the popover and Settings shows "Codex app-server closed before returning response id 1."
 
 Window kind is derived from `windowDurationMins` (10080 = weekly, 300 = 5h), not from `primary`/`secondary` position, because Codex dropped its 5h quota and `primary` is now the weekly window. Falls back to positional mapping when the duration is absent or when both windows would classify to the same kind.
 
