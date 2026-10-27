@@ -13,6 +13,8 @@ struct LocalizationAndFormattingTests {
         #expect(korean.colors == "색상")
         #expect(korean.reset == "재설정")
         #expect(korean.claudeColor == "Claude 색상")
+        #expect(Loc(lang: .english).darkModeWhenNotFocused == "Dark mode when not focused")
+        #expect(Loc(lang: .english).unfocusedColors == "Colors When Not Focused")
         #expect(korean.claudeName == "Claude 이름")
         #expect(korean.launchAtStartup == "시동 시 실행")
     }

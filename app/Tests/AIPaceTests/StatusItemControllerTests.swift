@@ -22,6 +22,22 @@ struct StatusItemControllerTests {
     }
 
     @Test
+    func unfocusedColorsAreUsedOnlyWhenEnabledAndThePopoverIsClosed() {
+        #expect(StatusItemAppearance.usesUnfocusedColors(darkModeWhenNotFocused: true, isPopoverShown: false))
+        #expect(!StatusItemAppearance.usesUnfocusedColors(darkModeWhenNotFocused: true, isPopoverShown: true))
+        #expect(!StatusItemAppearance.usesUnfocusedColors(darkModeWhenNotFocused: false, isPopoverShown: false))
+    }
+
+    @Test
+    func unfocusedColorsDefaultToBlackAndSupportOverrides() {
+        let defaultAccent = StatusItemAppearance.unfocusedAccent(from: nil)
+        let customAccent = StatusItemAppearance.unfocusedAccent(from: "#123ABC")
+
+        #expect(AppColorHex.string(from: defaultAccent) == "#000000")
+        #expect(AppColorHex.string(from: customAccent) == "#123ABC")
+    }
+
+    @Test
     @MainActor
     func statusItemLengthIsClampedToMinimumVisibleWidth() {
         #expect(StatusItemController.statusItemLength(forContentWidth: 0) == 32)

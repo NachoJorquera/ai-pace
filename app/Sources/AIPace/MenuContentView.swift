@@ -391,6 +391,9 @@ struct SettingsView: View {
     @AppStorage("selectedTheme") private var selectedThemeID = AppTheme.defaultTheme.id
     @AppStorage(AppTheme.customClaudeAccentDefaultsKey) private var customClaudeAccentHex = ""
     @AppStorage(AppTheme.customCodexAccentDefaultsKey) private var customCodexAccentHex = ""
+    @AppStorage(StatusItemAppearance.darkModeWhenNotFocusedDefaultsKey) private var darkModeWhenNotFocused = false
+    @AppStorage(StatusItemAppearance.unfocusedClaudeAccentDefaultsKey) private var unfocusedClaudeAccentHex = ""
+    @AppStorage(StatusItemAppearance.unfocusedCodexAccentDefaultsKey) private var unfocusedCodexAccentHex = ""
     @AppStorage(ProviderDisplayName.customClaudeNameDefaultsKey) private var customClaudeName = ""
     @AppStorage(ProviderDisplayName.customCodexNameDefaultsKey) private var customCodexName = ""
     @AppStorage("appLanguage") private var langID = AppLanguage.english.rawValue
@@ -599,6 +602,40 @@ struct SettingsView: View {
                         resetLabel: loc.reset
                     )
                 }
+
+                Divider()
+
+                Toggle(loc.darkModeWhenNotFocused, isOn: $darkModeWhenNotFocused)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12, weight: .semibold))
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(loc.unfocusedColors)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+
+                    settingRow(loc.claudeColor) {
+                        AccentColorControl(
+                            hexValue: $unfocusedClaudeAccentHex,
+                            fallbackColor: .black,
+                            resetLabel: loc.reset
+                        )
+                    }
+
+                    Divider()
+
+                    settingRow(loc.codexColor) {
+                        AccentColorControl(
+                            hexValue: $unfocusedCodexAccentHex,
+                            fallbackColor: .black,
+                            resetLabel: loc.reset
+                        )
+                    }
+                }
+                .disabled(!darkModeWhenNotFocused)
+                .opacity(darkModeWhenNotFocused ? 1 : 0.5)
 
                 Text(loc.colorsDesc)
                     .font(.system(size: 11))

@@ -99,6 +99,30 @@ struct Loc {
         }
     }
 
+    var darkModeWhenNotFocused: String {
+        switch lang {
+        case .english: return "Dark mode when not focused"
+        case .spanish: return "Modo oscuro sin foco"
+        case .french: return "Mode sombre hors focus"
+        case .german: return "Dunkelmodus ohne Fokus"
+        case .japanese: return "フォーカス外ではダークモード"
+        case .korean: return "포커스 해제 시 다크 모드"
+        case .chineseSimplified: return "未聚焦时使用深色模式"
+        }
+    }
+
+    var unfocusedColors: String {
+        switch lang {
+        case .english: return "Colors When Not Focused"
+        case .spanish: return "Colores sin foco"
+        case .french: return "Couleurs hors focus"
+        case .german: return "Farben ohne Fokus"
+        case .japanese: return "フォーカス外のカラー"
+        case .korean: return "포커스 해제 시 색상"
+        case .chineseSimplified: return "未聚焦时的颜色"
+        }
+    }
+
     var claudeName: String {
         switch lang {
         case .english: return "Claude Name"
