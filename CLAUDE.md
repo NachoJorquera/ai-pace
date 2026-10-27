@@ -39,7 +39,7 @@ ClaudeProbe ─┐
 CodexProbe ──┘                                             └─> MenuContentView popover
 ```
 
-`UsageStore.refresh()` runs both probes concurrently with `async let` on a timer (default 5 min, configurable, or manual). Both probes conform to `ProviderSnapshotFetching`, which is the seam tests inject through (`ProbeStub`, `CountingProbe`).
+`UsageStore.refresh()` runs both probes concurrently in a task group on a timer (default 5 min, configurable, or manual) and publishes each snapshot as soon as its own probe returns. A refresh ends only when both probes return, and `isRefreshing` blocks the next one until then, so a probe that never returns freezes updates for both providers. Both probes conform to `ProviderSnapshotFetching`, which is the seam tests inject through (`ProbeStub`, `CountingProbe`).
 
 ### Variable-length usage windows
 

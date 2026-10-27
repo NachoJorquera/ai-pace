@@ -62,6 +62,33 @@ struct UsageStoreTests {
 
     @Test
     @MainActor
+    func refreshPublishesEachProviderWithoutWaitingForTheOther() async {
+        let suiteName = UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let codexGate = ProbeGate()
+        let store = UsageStore(
+            claudeProbe: ProbeStub(queue: ProbeQueue([makeSnapshot(.claude, fiveHourUsed: 10, weeklyUsed: 20)])),
+            codexProbe: GatedProbe(snapshot: makeSnapshot(.codex, fiveHourUsed: 30, weeklyUsed: 40), gate: codexGate),
+            notificationManager: NotificationManagerSpy(),
+            userDefaults: defaults,
+            startRefreshLoop: false
+        )
+
+        let refresh = Task { await store.refresh() }
+        let claudePublished = await waitUntil { await store.claude.hasUsageData }
+
+        #expect(claudePublished)
+        #expect(!store.codex.hasUsageData)
+
+        await codexGate.release()
+        await refresh.value
+        #expect(store.codex.hasUsageData)
+    }
+
+    @Test
+    @MainActor
     func refreshPreservesFirstTransientClaudeAuthFailureOnly() async {
         let suiteName = UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!

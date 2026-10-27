@@ -13,6 +13,7 @@ The format is based on Keep a Changelog, and this project follows semantic versi
 
 ### Changed
 - The app reads your shell's PATH once per launch instead of three times per refresh. Each read starts an interactive shell that takes about a second, and Codex waited for two of them before it could start
+- Claude and Codex each appear as soon as their own usage loads, instead of both waiting for the slower one
 
 ### Fixed
 - Codex usage loads again with current codex-cli releases, which reject the `untrusted` approval policy and made Settings show "Codex app-server closed before returning response id 1." The app-server now starts with `never`

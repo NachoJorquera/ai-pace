@@ -75,24 +75,33 @@ final class UsageStore: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
 
-        let previousClaude = claude
-        let previousCodex = codex
+        let claudeProbe = claudeProbe
+        let codexProbe = codexProbe
 
-        async let claudeSnapshot = claudeProbe.fetch()
-        async let codexSnapshot = codexProbe.fetch()
-
-        let newClaude = await claudeSnapshot
-        let newCodex = await codexSnapshot
-
-        let resolvedClaude = mergedSnapshot(previous: previousClaude, current: newClaude)
-        let resolvedCodex = mergedSnapshot(previous: previousCodex, current: newCodex)
-
-        claude = resolvedClaude
-        codex = resolvedCodex
+        // Publishes each provider as soon as its own probe returns, so a slow provider does not hold
+        // the other one back.
+        await withTaskGroup(of: ProviderSnapshot.self) { group in
+            group.addTask { await claudeProbe.fetch() }
+            group.addTask { await codexProbe.fetch() }
+            for await snapshot in group {
+                await publish(snapshot)
+            }
+        }
         lastUpdated = Date()
+    }
 
-        await notifyIfWindowRefreshed(previous: previousClaude, current: resolvedClaude)
-        await notifyIfWindowRefreshed(previous: previousCodex, current: resolvedCodex)
+    private func publish(_ current: ProviderSnapshot) async {
+        let previous = snapshot(for: current.provider)
+        let resolved = mergedSnapshot(previous: previous, current: current)
+
+        switch current.provider {
+        case .claude:
+            claude = resolved
+        case .codex:
+            codex = resolved
+        }
+
+        await notifyIfWindowRefreshed(previous: previous, current: resolved)
     }
 
     func setAutoRefreshInterval(_ interval: AutoRefreshInterval) {
