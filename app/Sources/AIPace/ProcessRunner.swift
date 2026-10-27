@@ -123,9 +123,13 @@ enum ProcessRunner {
         return env
     }
 
+    /// The login shell's PATH, read once per run because every read starts an interactive shell that
+    /// takes about a second. Directories added to `.zshrc` later show up after an app restart.
+    private static let cachedLoginShellPath = loginShellPath()
+
     static func pathDirectories(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        loginShellPath: String? = ProcessRunner.loginShellPath(),
+        loginShellPath: String? = ProcessRunner.cachedLoginShellPath,
         homeDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path
     ) -> [String] {
         var directories: [String] = []

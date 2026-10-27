@@ -49,6 +49,14 @@ Adding a `UsageWindowKind` case ripples into exhaustive switches: `Loc.windowLab
 
 `UsageWindow.label` holds a provider-supplied display name and takes precedence over the localized kind label in the popover.
 
+### PATH for spawned tools
+
+`ProcessRunner` adds the user's login shell PATH to every tool it spawns. The shell runs once per app run (`cachedLoginShellPath`), because each run takes about a second, as `$SHELL -i -l +m -c 'printf %s "$PATH"'`:
+
+- `-i` sources `.zshrc`, where tools such as nvm add their directories; `-l` alone misses them.
+- `+m` turns job control off. When the app is launched from a terminal, an interactive shell with job control tries to take over that terminal and the kernel stops it (`ps` state `T`), leaving both providers on "Checking…".
+- A 10 s deadline kills the shell with SIGKILL, because a stopped process keeps SIGTERM pending.
+
 ### Claude probe
 
 Credentials resolve in a fixed order (`ClaudeCredentialLoader.resolveCredentials`): `~/.claude/.credentials.json`, then Keychain service `Claude Code-credentials` via `/usr/bin/security`, then `CLAUDE_CODE_OAUTH_TOKEN`. Only the first two are refreshable.
