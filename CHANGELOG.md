@@ -11,8 +11,14 @@ The format is based on Keep a Changelog, and this project follows semantic versi
 - When a newer release exists, its DMG can be downloaded from inside the app to the Downloads folder, with progress and SHA-256 verification against the checksum GitHub publishes; installing it is still a manual drag into Applications
 - Dark mode when not focused: an option under Colors in Settings that paints the menu bar pills with their own Claude and Codex colors (black by default) while the popover is closed, and returns to the theme colors while it is open
 
+### Changed
+- The app reads your shell's PATH once per launch instead of three times per refresh. Each read starts an interactive shell that takes about a second, and Codex waited for two of them before it could start
+- Claude and Codex each appear as soon as their own usage loads, instead of both waiting for the slower one
+
 ### Fixed
 - Codex usage loads again with current codex-cli releases, which reject the `untrusted` approval policy and made Settings show "Codex app-server closed before returning response id 1." The app-server now starts with `never`
+- Claude and Codex no longer stay on "Checking…" forever when the app is launched from a terminal. The shell that reads your PATH was stopped by the system while trying to take over the terminal; it now runs without job control and is abandoned after 10 seconds
+- A Codex app-server that never answers no longer stops refreshes for both providers. It is stopped after 30 seconds and Settings shows "Codex app-server did not respond within 30 seconds."
 
 ## [1.3.0] - 2026-08-06
 

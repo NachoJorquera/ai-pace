@@ -145,4 +145,20 @@ struct CodexProbeTests {
             Issue.record("Unexpected error: \(error)")
         }
     }
+
+    @Test
+    func fetchGivesUpOnAnAppServerThatNeverAnswers() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let codex = directory.appendingPathComponent("silent-codex")
+        try Data("#!/bin/sh\nexec sleep 20\n".utf8).write(to: codex)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: codex.path)
+
+        let start = Date()
+        let snapshot = await CodexProbe(responseTimeout: 0.5, executableOverride: codex.path).fetch()
+
+        #expect(snapshot.firstMessage?.contains("did not respond") == true)
+        #expect(Date().timeIntervalSince(start) < 5)
+    }
 }

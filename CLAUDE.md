@@ -16,6 +16,8 @@ swift test --filter ClaudeProbeTests/refreshRequestBodyUsesStoredScopes   # one 
 
 `./scripts/test.sh` runs the suite from the repo root and exports `DEVELOPER_DIR` first; it forwards arguments to `swift test`.
 
+To try a change in the real app without packaging, run the debug build from a terminal in `app/`: `swift build && "$(swift build --show-bin-path)/AIPace"`.
+
 Packaging builds the `.app` bundle and a DMG into `dist/`:
 
 ```bash
@@ -39,7 +41,7 @@ ClaudeProbe ─┐
 CodexProbe ──┘                                             └─> MenuContentView popover
 ```
 
-`UsageStore.refresh()` runs both probes concurrently with `async let` on a timer (default 5 min, configurable, or manual). Both probes conform to `ProviderSnapshotFetching`, which is the seam tests inject through (`ProbeStub`, `CountingProbe`).
+`UsageStore.refresh()` runs both probes concurrently in a task group on a timer (default 5 min, configurable, or manual) and publishes each snapshot as soon as its own probe returns. A refresh ends only when both probes return, and `isRefreshing` blocks the next one until then, so a probe that never returns freezes updates for both providers. Both probes conform to `ProviderSnapshotFetching`, which is the seam tests inject through (`ProbeStub`, `CountingProbe`).
 
 ### Variable-length usage windows
 
@@ -48,6 +50,14 @@ CodexProbe ──┘                                             └─> MenuCon
 Adding a `UsageWindowKind` case ripples into exhaustive switches: `Loc.windowLabel` covers 7 languages, and `UsageWindowKey.storageKey` is persisted in UserDefaults for notification toggles (changing a kind silently orphans a user's saved toggle).
 
 `UsageWindow.label` holds a provider-supplied display name and takes precedence over the localized kind label in the popover.
+
+### PATH for spawned tools
+
+`ProcessRunner` adds the user's login shell PATH to every tool it spawns. The shell runs once per app run (`cachedLoginShellPath`), because each run takes about a second, as `$SHELL -i -l +m -c 'printf %s "$PATH"'`:
+
+- `-i` sources `.zshrc`, where tools such as nvm add their directories; `-l` alone misses them.
+- `+m` turns job control off. When the app is launched from a terminal, an interactive shell with job control tries to take over that terminal and the kernel stops it (`ps` state `T`), leaving both providers on "Checking…".
+- A 10 s deadline kills the shell with SIGKILL, because a stopped process keeps SIGTERM pending.
 
 ### Claude probe
 
@@ -67,6 +77,8 @@ The usage endpoint (`GET https://api.anthropic.com/api/oauth/usage`) is undocume
 Spawns `codex -s read-only -a never app-server` from the user's home directory (avoids workspace trust prompts) and speaks JSON-RPC over stdin/stdout: `initialize`, `initialized`, then `account/rateLimits/read`.
 
 Current codex-cli accepts only `on-request` and `never` for `-a`. Any other value makes the process exit during argument parsing, before it answers `initialize`. Codex then drops out of the popover and Settings shows "Codex app-server closed before returning response id 1."
+
+The exchange has a 30 s deadline (`responseTimeout`). When it expires, the app-server is killed and Settings shows "Codex app-server did not respond within 30 seconds.", which tells a hang apart from the argument rejection above.
 
 Window kind is derived from `windowDurationMins` (10080 = weekly, 300 = 5h), not from `primary`/`secondary` position, because Codex dropped its 5h quota and `primary` is now the weekly window. Falls back to positional mapping when the duration is absent or when both windows would classify to the same kind.
 

@@ -123,9 +123,13 @@ enum ProcessRunner {
         return env
     }
 
+    /// The login shell's PATH, read once per run because every read starts an interactive shell that
+    /// takes about a second. Directories added to `.zshrc` later show up after an app restart.
+    private static let cachedLoginShellPath = loginShellPath()
+
     static func pathDirectories(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        loginShellPath: String? = ProcessRunner.loginShellPath(),
+        loginShellPath: String? = ProcessRunner.cachedLoginShellPath,
         homeDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path
     ) -> [String] {
         var directories: [String] = []
@@ -161,19 +165,25 @@ enum ProcessRunner {
         return directories
     }
 
-    private static func loginShellPath() -> String? {
-        let shellCandidates = [
+    /// Reads PATH from the user's interactive login shell, so tools that only `.zshrc` adds (nvm, for
+    /// instance) are found. Gives up after `timeout` so a stuck shell cannot hang the probes.
+    static func loginShellPath(
+        shellCandidates: [String] = [
             ProcessInfo.processInfo.environment["SHELL"],
             "/bin/zsh",
             "/bin/bash",
-        ].compactMap { $0 }
-
+        ].compactMap { $0 },
+        timeout: TimeInterval = 10
+    ) -> String? {
         for shell in shellCandidates where FileManager.default.isExecutableFile(atPath: shell) {
             let process = Process()
             let stdout = Pipe()
 
             process.executableURL = URL(fileURLWithPath: shell)
-            process.arguments = ["-i", "-l", "-c", "printf %s \"$PATH\""]
+            // `+m` turns job control off. When the app is launched from a terminal, an interactive
+            // shell with job control tries to take over that terminal and the kernel stops it.
+            process.arguments = ["-i", "-l", "+m", "-c", "printf %s \"$PATH\""]
+            process.standardInput = FileHandle.nullDevice
             process.standardOutput = stdout
             process.standardError = FileHandle.nullDevice
             process.environment = ProcessInfo.processInfo.environment
@@ -181,7 +191,8 @@ enum ProcessRunner {
 
             do {
                 try process.run()
-                process.waitUntilExit()
+                // Give up rather than wait out another timeout on the next candidate.
+                guard waitForExit(process, timeout: timeout) else { return nil }
                 guard process.terminationStatus == 0 else { continue }
 
                 let data = stdout.fileHandleForReading.readDataToEndOfFile()
@@ -196,6 +207,20 @@ enum ProcessRunner {
         }
 
         return nil
+    }
+
+    /// Returns whether `process` exited within `timeout`, killing it otherwise. Uses SIGKILL because a
+    /// stopped process keeps SIGTERM pending and never exits.
+    private static func waitForExit(_ process: Process, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning && Date() < deadline {
+            usleep(50_000)
+        }
+
+        guard process.isRunning else { return true }
+        kill(process.processIdentifier, SIGKILL)
+        process.waitUntilExit()
+        return false
     }
 
     static func expandUserPath(

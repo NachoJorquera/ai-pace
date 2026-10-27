@@ -149,6 +149,34 @@ struct CountingProbe: ProviderSnapshotFetching {
     }
 }
 
+/// Holds every `wait()` until `release()`, so a test can keep one provider loading while the other
+/// finishes.
+actor ProbeGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func release() {
+        isOpen = true
+        waiters.forEach { $0.resume() }
+        waiters = []
+    }
+}
+
+struct GatedProbe: ProviderSnapshotFetching {
+    let snapshot: ProviderSnapshot
+    let gate: ProbeGate
+
+    func fetch() async -> ProviderSnapshot {
+        await gate.wait()
+        return snapshot
+    }
+}
+
 func waitUntil(
     maxAttempts: Int = 100,
     pollInterval: Duration = .milliseconds(10),
