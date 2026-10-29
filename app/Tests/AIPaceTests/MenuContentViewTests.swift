@@ -6,6 +6,36 @@ import Testing
 @MainActor
 struct MenuContentViewTests {
     @Test
+    func popoverResizesForIndependentSelectionWithoutChangingProviderAvailability() {
+        let suite = "AIPaceTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = UsageStore(
+            notificationManager: NotificationManagerSpy(),
+            launchAtStartupManager: LaunchAtStartupManagerSpy(),
+            userDefaults: defaults,
+            startRefreshLoop: false
+        )
+        store.claude = makeSnapshot(.claude, fiveHourUsed: 12, weeklyUsed: 19)
+        store.codex = makeSnapshot(.codex, windows: [makeWindow(.weekly, used: 5)])
+        let controller = makeHostingController(store: store)
+        let size = NSSize(width: 440, height: 900)
+        let full = controller.sizeThatFits(in: size)
+        store.setPopoverMatchesMenuBar(false)
+        store.setUsageVisible(false, metric: UsageMetric(provider: .claude, kind: .fiveHour), in: .popover)
+        controller.rootView = MenuContentView(store: store, openSettings: {})
+        let filtered = controller.sizeThatFits(in: size)
+        #expect(filtered.width == 440)
+        #expect(filtered.height < full.height)
+        #expect(store.usageDisplayPreferences.filtered(store.claude, for: .menuBar).windows.count == 2)
+
+        store.setUsageVisible(false, metric: UsageMetric(provider: .claude, kind: .weekly), in: .popover)
+        controller.rootView = MenuContentView(store: store, openSettings: {})
+        #expect(controller.sizeThatFits(in: size).height > 0)
+        #expect(store.agentStatus(for: .claude).availability == .available)
+    }
+
+    @Test
     func popoverFitsAdditionalUsageWindowsAndShrinksWhenTheyDisappear() {
         let store = makeStore()
         store.claude = makeSnapshot(.claude, fiveHourUsed: 12, weeklyUsed: 19)

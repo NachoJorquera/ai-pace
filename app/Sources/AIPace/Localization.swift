@@ -27,6 +27,114 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 struct Loc {
     let lang: AppLanguage
 
+    var showAgentIdentifier: String {
+        switch lang {
+        case .english: return "Show identifier in menu bar"
+        case .spanish: return "Mostrar identificador en la barra de menú"
+        case .french: return "Afficher l’identifiant dans la barre de menus"
+        case .german: return "Kennung in der Menüleiste anzeigen"
+        case .japanese: return "メニューバーに識別名を表示"
+        case .korean: return "메뉴 막대에 식별자 표시"
+        case .chineseSimplified: return "在菜单栏中显示标识"
+        }
+    }
+
+    var showMenuBarResetTime: String {
+        switch lang {
+        case .english: return "Show time until reset in menu bar"
+        case .spanish: return "Mostrar tiempo hasta el reinicio en la barra"
+        case .french: return "Afficher le délai de réinitialisation dans la barre"
+        case .german: return "Zeit bis zur Rücksetzung in der Menüleiste anzeigen"
+        case .japanese: return "メニューバーにリセットまでの時間を表示"
+        case .korean: return "메뉴 막대에 초기화까지 남은 시간 표시"
+        case .chineseSimplified: return "在菜单栏中显示距重置时间"
+        }
+    }
+
+    var menuBarResetTimeDescription: String {
+        switch lang {
+        case .english: return "Adds the time remaining next to each selected quota with a reset date. Updates every minute, including with manual refresh. In insight-only mode, shows the weekly reset."
+        case .spanish: return "Agrega el tiempo restante junto a cada cuota seleccionada con fecha de reinicio. Se actualiza cada minuto, incluso con actualización manual. En modo solo ritmo, muestra el reinicio semanal."
+        case .french: return "Ajoute le temps restant à chaque quota sélectionné avec une date de réinitialisation. Mis à jour chaque minute, même en mode manuel. En mode rythme seul, affiche la réinitialisation hebdomadaire."
+        case .german: return "Ergänzt die Restzeit bei jedem ausgewählten Kontingent mit Rücksetzdatum. Wird auch bei manueller Aktualisierung jede Minute erneuert. Im reinen Tempomodus wird die wöchentliche Rücksetzung angezeigt."
+        case .japanese: return "リセット日時がある選択済み上限に残り時間を追加します。手動更新でも毎分更新されます。ペースのみのモードでは週間リセットを表示します。"
+        case .korean: return "초기화 날짜가 있는 선택된 한도 옆에 남은 시간을 표시합니다. 수동 새로고침에서도 매분 갱신됩니다. 속도만 표시하는 모드에서는 주간 초기화를 표시합니다."
+        case .chineseSimplified: return "在有重置日期的已选限额旁显示剩余时间。即使手动刷新也每分钟更新。仅进度模式显示每周重置时间。"
+        }
+    }
+
+    var usageMenuBar: String {
+        switch lang {
+        case .english: return "Menu bar"
+        case .spanish: return "Barra de menú"
+        case .french: return "Barre de menus"
+        case .german: return "Menüleiste"
+        case .japanese: return "メニューバー"
+        case .korean: return "메뉴 막대"
+        case .chineseSimplified: return "菜单栏"
+        }
+    }
+
+    var usageMenu: String {
+        switch lang {
+        case .english: return "Menu"
+        case .spanish: return "Menú"
+        case .french: return "Menu"
+        case .german: return "Menü"
+        case .japanese: return "メニュー"
+        case .korean: return "메뉴"
+        case .chineseSimplified: return "菜单"
+        }
+    }
+
+    var sameUsageAsMenuBar: String {
+        switch lang {
+        case .english: return "Show the same usage in the menu and menu bar"
+        case .spanish: return "Mostrar el mismo uso en el menú y la barra"
+        case .french: return "Afficher le même usage dans le menu et la barre"
+        case .german: return "Gleiche Nutzung in Menü und Menüleiste anzeigen"
+        case .japanese: return "メニューとメニューバーに同じ使用量を表示"
+        case .korean: return "메뉴와 메뉴 막대에 같은 사용량 표시"
+        case .chineseSimplified: return "在菜单和菜单栏中显示相同用量"
+        }
+    }
+
+    var usageSelectionDescription: String {
+        switch lang {
+        case .english: return "Choose which quotas to show. Turn off matching to configure the menu separately. Pacing insight follows the weekly quota selection."
+        case .spanish: return "Elige qué cuotas mostrar. Desactiva la sincronización para configurar el menú por separado. El indicador de ritmo sigue la selección de la cuota semanal."
+        case .french: return "Choisissez les quotas à afficher. Désactivez la synchronisation pour configurer le menu séparément. L’indicateur de rythme suit le quota hebdomadaire."
+        case .german: return "Wähle die angezeigten Kontingente. Deaktiviere den Abgleich, um das Menü separat einzustellen. Die Tempoanzeige folgt dem Wochenkontingent."
+        case .japanese: return "表示する上限を選択します。同じ表示をオフにするとメニューを個別に設定できます。ペース表示は週間上限の選択に従います。"
+        case .korean: return "표시할 한도를 선택하세요. 동기화를 끄면 메뉴를 별도로 설정할 수 있습니다. 사용 속도는 주간 한도 선택을 따릅니다."
+        case .chineseSimplified: return "选择要显示的限额。关闭同步可单独设置菜单。使用进度提示随每周限额的选择显示。"
+        }
+    }
+
+    var additionalUsageDescription: String {
+        switch lang {
+        case .english: return "Model quotas (Fable, Opus, Sonnet…), OAuth apps, Cowork and extra usage appear when Claude returns data for your account. Extra usage shows the percentage of its spending limit."
+        case .spanish: return "Las cuotas por modelo (Fable, Opus, Sonnet…), apps OAuth, Cowork y uso extra aparecen cuando Claude devuelve datos para tu cuenta. El uso extra muestra el porcentaje de su límite de gasto."
+        case .french: return "Les quotas par modèle (Fable, Opus, Sonnet…), apps OAuth, Cowork et l’usage supplémentaire apparaissent si Claude les fournit. L’usage supplémentaire indique le pourcentage du plafond de dépenses."
+        case .german: return "Modellkontingente (Fable, Opus, Sonnet…), OAuth-Apps, Cowork und Zusatznutzung erscheinen, wenn Claude Daten dafür liefert. Zusatznutzung zeigt den Anteil am Ausgabenlimit."
+        case .japanese: return "モデル別上限（Fable、Opus、Sonnet…）、OAuthアプリ、Cowork、追加使用量はClaudeがデータを返すと表示されます。追加使用量は支出上限に対する割合です。"
+        case .korean: return "모델별 한도(Fable, Opus, Sonnet…), OAuth 앱, Cowork 및 추가 사용량은 Claude가 계정 데이터를 제공하면 표시됩니다. 추가 사용량은 지출 한도 대비 비율입니다."
+        case .chineseSimplified: return "当Claude返回账户数据时，将显示模型限额（Fable、Opus、Sonnet…）、OAuth应用、Cowork及额外用量。额外用量显示支出限额的使用百分比。"
+        }
+    }
+
+    var noUsageSelected: String {
+        switch lang {
+        case .english: return "No usage selected. Choose quotas in Settings → Usage."
+        case .spanish: return "No hay cuotas seleccionadas. Elígelas en Ajustes → Uso."
+        case .french: return "Aucun quota sélectionné. Choisissez-les dans Réglages → Utilisation."
+        case .german: return "Keine Kontingente ausgewählt. Wähle sie unter Einstellungen → Nutzung."
+        case .japanese: return "上限が未選択です。設定 → 使用量で選択してください。"
+        case .korean: return "선택한 한도가 없습니다. 설정 → 사용량에서 선택하세요."
+        case .chineseSimplified: return "未选择用量。请在设置 → 用量中选择限额。"
+        }
+    }
+
     var usage: String {
         switch lang {
         case .english: return "Usage"
@@ -150,19 +258,19 @@ struct Loc {
     var agentNamesDesc: String {
         switch lang {
         case .english:
-            return "Names can be up to 7 characters. Leave blank to use the default name."
+            return "Names can be up to 7 characters. Leave blank to use the default name. Use the checkbox to show or hide the identifier in the menu bar."
         case .spanish:
-            return "Los nombres pueden tener hasta 7 caracteres. Déjalo en blanco para usar el nombre predeterminado."
+            return "Los nombres pueden tener hasta 7 caracteres. Déjalo en blanco para usar el nombre predeterminado. El checkbox muestra u oculta el identificador en la barra de menú."
         case .french:
-            return "Les noms peuvent contenir jusqu'à 7 caractères. Laissez vide pour utiliser le nom par défaut."
+            return "Les noms peuvent contenir jusqu'à 7 caractères. Laissez vide pour utiliser le nom par défaut. La case affiche ou masque l’identifiant dans la barre de menus."
         case .german:
-            return "Namen dürfen bis zu 7 Zeichen lang sein. Leer lassen, um den Standardnamen zu verwenden."
+            return "Namen dürfen bis zu 7 Zeichen lang sein. Leer lassen, um den Standardnamen zu verwenden. Das Kontrollkästchen zeigt oder verbirgt die Kennung in der Menüleiste."
         case .japanese:
-            return "名前は最大 7 文字です。空欄にすると既定の名前を使います。"
+            return "名前は最大 7 文字です。空欄にすると既定の名前を使います。チェックボックスでメニューバーの識別名を表示・非表示にできます。"
         case .korean:
-            return "이름은 최대 7자까지 가능합니다. 비워 두면 기본 이름을 사용합니다."
+            return "이름은 최대 7자까지 가능합니다. 비워 두면 기본 이름을 사용합니다. 체크박스로 메뉴 막대의 식별자를 표시하거나 숨길 수 있습니다."
         case .chineseSimplified:
-            return "名称最多 7 个字符。留空则使用默认名称。"
+            return "名称最多 7 个字符。留空则使用默认名称。通过复选框显示或隐藏菜单栏标识。"
         }
     }
 
@@ -685,6 +793,20 @@ struct Loc {
             case .japanese: return "モデル"
             case .korean: return "모델"
             case .chineseSimplified: return "模型"
+            }
+        case .oauthAppsWeekly:
+            return "OAuth · \(windowLabel(.weekly))"
+        case .coworkWeekly:
+            return "Cowork · \(windowLabel(.weekly))"
+        case .extraUsage:
+            switch lang {
+            case .english: return "Extra usage"
+            case .spanish: return "Uso extra"
+            case .french: return "Usage supplémentaire"
+            case .german: return "Zusatznutzung"
+            case .japanese: return "追加使用量"
+            case .korean: return "추가 사용량"
+            case .chineseSimplified: return "额外用量"
             }
         }
     }

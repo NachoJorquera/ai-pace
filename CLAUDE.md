@@ -45,11 +45,19 @@ CodexProbe ──┘                                             └─> MenuCon
 
 ### Variable-length usage windows
 
-`ProviderSnapshot.windows` is an array, not a fixed pair, because providers disagree on how many quotas they expose: Codex reports one weekly window, Claude reports two plus an optional model-scoped one. `fiveHour` and `weekly` are computed lookups over that array and return optionals.
+`ProviderSnapshot.windows` is an array, not a fixed pair, because providers disagree on how many quotas they expose: Codex can report one weekly window; Claude also reports model-scoped quotas and optional OAuth apps, Cowork and extra-usage windows. `fiveHour` and `weekly` are computed lookups over that array and return optionals.
 
 Adding a `UsageWindowKind` case ripples into exhaustive switches: `Loc.windowLabel` covers 7 languages, and `UsageWindowKey.storageKey` is persisted in UserDefaults for notification toggles (changing a kind silently orphans a user's saved toggle).
 
 `UsageWindow.label` holds a provider-supplied display name and takes precedence over the localized kind label in the popover.
+
+### Usage display preferences
+
+`UsageDisplayPreferences` is persisted as JSON in UserDefaults by `UsageStore`. Each `UsageMetric` uses provider, window kind and (for model-scoped windows) the provider-supplied model name as its display identity. These identities are independent of notification keys, which retain their existing format. Do not change persisted enum raw values or the metric identity format without a migration.
+
+Settings remembers discovered metrics even when a subsequent response omits them. All metrics start visible. The popover follows the menu bar selection by default; unlinking copies the current selection for independent editing. Filter snapshots only at presentation time: availability checks and reset notifications must continue using full snapshots. Pacing insight follows the visibility of the general weekly quota. Hiding every quota leaves the provider name (when enabled) in the menu bar and an explanatory message in its popover card. If no provider has visible content, the existing `AIPace` fallback keeps Settings accessible.
+
+`showMenuBarResetTime` is an independent UserDefaults toggle, off by default. `UsageResetTime` formats countdowns for both the menu bar and popover. The status controller recalculates enabled menu bar countdowns every minute via a Combine timer without fetching providers, including in manual refresh mode. Insight-only mode attaches the weekly countdown to the pacing value. `showClaudeName` and `showCodexName` default to true and control only menu bar prefixes, preserving custom names. The unfocused dark colors default to `#3F1E17` for Claude and `#14263F` for Codex, while stored custom colors continue to take precedence.
 
 ### PATH for spawned tools
 
@@ -68,9 +76,10 @@ Credentials resolve in a fixed order (`ClaudeCredentialLoader.resolveCredentials
 The usage endpoint (`GET https://api.anthropic.com/api/oauth/usage`) is undocumented and visibly in flux, full of null experimental keys. Consequences encoded in `ClaudeProbe`:
 
 - `ClaudeUsageResponse.init(from:)` is hand-written so a malformed `limits` array degrades to `nil` instead of failing the whole response and taking the two working windows with it.
-- Model-scoped quotas live only in the `limits` array, keyed `weekly_scoped`. The legacy per-model keys (`seven_day_opus`, `seven_day_sonnet`) are always null now.
+- Current model-scoped quotas live in the `limits` array, keyed `weekly_scoped`. The legacy per-model keys (`seven_day_opus`, `seven_day_sonnet`) have been observed null; they are decoded as fallbacks when populated, without duplicating models already in `limits`.
 - The model name comes from `scope.model.display_name`; `scope.model.id` is null, so never match on an id or hardcode a model name.
 - **Do not filter on `is_active`.** It flips between refreshes and has been observed true on the session entry and false on both weekly entries, then the reverse. Filtering on it makes windows appear and disappear.
+- Optional `seven_day_oauth_apps` and `seven_day_cowork` quotas are exposed only when they contain utilization. `extra_usage` requires `is_enabled` and a usable utilization percentage (or used credits divided by a positive monthly limit). It has no reset time or reset notification control. Optional malformed fields must not break the standard windows; null experimental keys are not offered as quotas.
 
 ### Codex probe
 
@@ -98,6 +107,8 @@ Window kind is derived from `windowDurationMins` (10080 = weekly, 300 = 5h), not
 `mergedSnapshot` keeps the previous snapshot when the current fetch has no data, for HTTP 429 / rate limit errors, and for one consecutive transient Claude auth failure, so a Keychain hiccup does not blank the UI.
 
 ### Status item resilience
+
+The usage popover uses `.applicationDefined` dismissal. `.semitransient` can close on mouse-down in its positioning window before the button's mouse-up toggle runs, reopening the popover. Outside-click and app-deactivation handlers run synchronously on AppKit's main thread and defer to the button when a click is on its screen-space bounds. Keyboard app switching still closes with the pointer resting over the icon. A local Escape monitor is installed only while the popover is open.
 
 The macOS status item is unreliable across display wake and display-configuration changes, and `StatusItemController` carries a whole line of defenses: a 500 ms `StatusItemRepairDebouncer` coalescing repair triggers, a health gate that refreshes a live item in place rather than tearing it down, a bounded retry when a rebuild produces a dead item, and a follow-up repair after wake. `item.autosaveName = "AIPaceStatusItem"` makes AppKit persist both position and `isVisible` under a stable key.
 

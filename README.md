@@ -14,6 +14,7 @@ AIPace is a lightweight menu bar app that shows your current `5h` and `weekly` u
 
 - 🧪 Menu bar app built with SwiftUI
 - 📊 Claude and Codex `5h` and `weekly` usage in one place
+- 🎚️ Choose which quotas appear in the menu bar and popover, together or independently
 - 🔐 Uses your existing local CLI login
 - 🔔 Optional notifications when a usage window refreshes
 - ⏱️ Refreshes every 5 minutes by default
@@ -70,6 +71,12 @@ Then it calls:
 - Refresh endpoint: `https://platform.claude.com/v1/oauth/token`
 
 It also reads `~/.claude.json -> oauthAccount` for display info only.
+
+In **Settings → Usage** (below Agents), each quota has a menu bar switch and a menu switch. By default, the menu follows the menu bar selection. Turn off **Show the same usage in the menu and menu bar** to choose them independently. All quotas are visible by default, and your choices are saved across launches. If you turn off every quota, the menu bar keeps the agent's name so you can still open the menu and Settings. Pacing insight follows the weekly quota switch.
+
+Enable **Show time until reset in menu bar** to add a countdown beside each selected quota with a reset date, such as `Cl 14 (2h 10m)`. The countdown updates locally every minute, even with manual provider refresh. In insight-only mode it shows the weekly reset. Under **Agents**, the checkbox to the right of each name field controls whether its identifier appears in the menu bar; hiding it keeps the custom name saved. If both agents have no visible content, an `AIPace` fallback keeps Settings accessible. Under **Colors**, dark mode when not focused defaults to `#3F1E17` for Claude and `#14263F` for Codex; custom colors take precedence.
+
+Claude quotas include 5-hour usage, weekly usage across all models, and individual weekly model quotas such as Fable, Opus or Sonnet. OAuth apps, Cowork and extra usage also appear when your account returns data for them. Extra usage is shown as the percentage of its spending limit, only when enabled and a percentage can be determined. Unsupported or empty experimental fields are not displayed. Discovered quotas stay in Settings even if a later response omits them.
 
 **Note:** If macOS asks for Keychain access, that is expected. The app is reading your Claude credentials from Keychain.
 

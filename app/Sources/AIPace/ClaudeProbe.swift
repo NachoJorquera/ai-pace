@@ -72,7 +72,7 @@ struct ClaudeProbe: Sendable {
                         resetsAt: parseISODate(usage.sevenDay?.resetsAt),
                         message: usage.sevenDay == nil ? "No weekly limit returned." : nil
                     ),
-                ] + scopedWindows(from: usage),
+                ] + additionalWindows(from: usage),
                 detail: detailText(from: credentials, accountInfo: accountInfo)
             )
         } catch {
@@ -222,7 +222,7 @@ struct ClaudeProbe: Sendable {
     /// Deliberately ignores `is_active`: the server sends it as false on both weekly entries while
     /// only the session entry is true, so filtering on it would hide these windows entirely.
     func scopedWindows(from usage: ClaudeUsageResponse) -> [UsageWindow] {
-        (usage.limits ?? [])
+        var windows: [UsageWindow] = (usage.limits ?? [])
             .filter { $0.kind == Self.scopedWeeklyLimitKind }
             .compactMap { entry in
                 guard let percent = entry.percent else {
@@ -236,6 +236,41 @@ struct ClaudeProbe: Sendable {
                     label: entry.scope?.model?.displayName
                 )
             }
+
+        // Older responses expose these at the top level. Prefer the current `limits` entry when
+        // both representations are present, so a model is never displayed twice.
+        for (name, quota) in [("Opus", usage.sevenDayOpus), ("Sonnet", usage.sevenDaySonnet)] {
+            guard let quota, let percent = quota.utilization,
+                  !windows.contains(where: { $0.label?.localizedCaseInsensitiveCompare(name) == .orderedSame }) else {
+                continue
+            }
+            windows.append(UsageWindow(
+                kind: .scopedWeekly,
+                usedPercentage: percent,
+                resetsAt: parseISODate(quota.resetsAt),
+                label: name
+            ))
+        }
+        return windows
+    }
+
+    func additionalWindows(from usage: ClaudeUsageResponse) -> [UsageWindow] {
+        var windows = scopedWindows(from: usage)
+        for (kind, quota) in [
+            (UsageWindowKind.oauthAppsWeekly, usage.sevenDayOAuthApps),
+            (UsageWindowKind.coworkWeekly, usage.sevenDayCowork),
+        ] {
+            guard let quota, let percent = quota.utilization else { continue }
+            windows.append(UsageWindow(
+                kind: kind,
+                usedPercentage: percent,
+                resetsAt: parseISODate(quota.resetsAt)
+            ))
+        }
+        if let extra = usage.extraUsage, extra.isEnabled == true, let percent = extra.percentage {
+            windows.append(UsageWindow(kind: .extraUsage, usedPercentage: percent))
+        }
+        return windows
     }
 
     func parseISODate(_ isoString: String?) -> Date? {
@@ -305,20 +340,40 @@ struct ClaudeAuthStatus: Decodable, Sendable {
 struct ClaudeUsageResponse: Decodable, Sendable {
     let fiveHour: ClaudeQuotaData?
     let sevenDay: ClaudeQuotaData?
-    /// Per-limit breakdown. Superset of `fiveHour`/`sevenDay`, and the only place model-scoped quotas
-    /// appear. Undocumented and in flux, so it is treated as optional everywhere.
+    /// Per-limit breakdown. Current responses report model-scoped quotas here. Older payloads can
+    /// use the top-level per-model keys instead. Undocumented and in flux, so decoding is optional.
     let limits: [ClaudeLimitEntry]?
+    let sevenDayOpus: ClaudeQuotaData?
+    let sevenDaySonnet: ClaudeQuotaData?
+    let sevenDayOAuthApps: ClaudeQuotaData?
+    let sevenDayCowork: ClaudeQuotaData?
+    let extraUsage: ClaudeExtraUsageData?
 
     enum CodingKeys: String, CodingKey {
         case fiveHour = "five_hour"
         case sevenDay = "seven_day"
         case limits
+        case sevenDayOpus = "seven_day_opus"
+        case sevenDaySonnet = "seven_day_sonnet"
+        case sevenDayOAuthApps = "seven_day_oauth_apps"
+        case sevenDayCowork = "seven_day_cowork"
+        case extraUsage = "extra_usage"
     }
 
-    init(fiveHour: ClaudeQuotaData?, sevenDay: ClaudeQuotaData?, limits: [ClaudeLimitEntry]? = nil) {
+    init(
+        fiveHour: ClaudeQuotaData?, sevenDay: ClaudeQuotaData?, limits: [ClaudeLimitEntry]? = nil,
+        sevenDayOpus: ClaudeQuotaData? = nil, sevenDaySonnet: ClaudeQuotaData? = nil,
+        sevenDayOAuthApps: ClaudeQuotaData? = nil, sevenDayCowork: ClaudeQuotaData? = nil,
+        extraUsage: ClaudeExtraUsageData? = nil
+    ) {
         self.fiveHour = fiveHour
         self.sevenDay = sevenDay
         self.limits = limits
+        self.sevenDayOpus = sevenDayOpus
+        self.sevenDaySonnet = sevenDaySonnet
+        self.sevenDayOAuthApps = sevenDayOAuthApps
+        self.sevenDayCowork = sevenDayCowork
+        self.extraUsage = extraUsage
     }
 
     init(from decoder: any Decoder) throws {
@@ -328,6 +383,32 @@ struct ClaudeUsageResponse: Decodable, Sendable {
         // Anything malformed in `limits` drops the whole array rather than failing the response and
         // taking the two windows that already work down with it.
         limits = try? container.decodeIfPresent([ClaudeLimitEntry].self, forKey: .limits)
+        sevenDayOpus = try? container.decodeIfPresent(ClaudeQuotaData.self, forKey: .sevenDayOpus)
+        sevenDaySonnet = try? container.decodeIfPresent(ClaudeQuotaData.self, forKey: .sevenDaySonnet)
+        sevenDayOAuthApps = try? container.decodeIfPresent(ClaudeQuotaData.self, forKey: .sevenDayOAuthApps)
+        sevenDayCowork = try? container.decodeIfPresent(ClaudeQuotaData.self, forKey: .sevenDayCowork)
+        extraUsage = try? container.decodeIfPresent(ClaudeExtraUsageData.self, forKey: .extraUsage)
+    }
+}
+
+struct ClaudeExtraUsageData: Decodable, Sendable {
+    let isEnabled: Bool?
+    let utilization: Double?
+    let monthlyLimit: Double?
+    let usedCredits: Double?
+
+    var percentage: Double? {
+        if let utilization, utilization.isFinite { return utilization }
+        guard let monthlyLimit, monthlyLimit > 0, let usedCredits else { return nil }
+        let value = usedCredits / monthlyLimit * 100
+        return value.isFinite ? value : nil
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case isEnabled = "is_enabled"
+        case utilization
+        case monthlyLimit = "monthly_limit"
+        case usedCredits = "used_credits"
     }
 }
 

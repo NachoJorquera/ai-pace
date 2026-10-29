@@ -9,8 +9,9 @@ enum StatusItemAppearance {
         darkModeWhenNotFocused && !isPopoverShown
     }
 
-    static func unfocusedAccent(from hexValue: String?) -> Color {
-        AppColorHex.color(from: hexValue) ?? .black
+    static func unfocusedAccent(for provider: ProviderKind, from hexValue: String? = nil) -> Color {
+        let defaultHex = provider == .claude ? "#3F1E17" : "#14263F"
+        return AppColorHex.color(from: hexValue) ?? AppColorHex.color(from: defaultHex) ?? .black
     }
 }
 

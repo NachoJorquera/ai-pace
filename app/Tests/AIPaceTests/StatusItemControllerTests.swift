@@ -5,6 +5,36 @@ import Testing
 
 struct StatusItemControllerTests {
     @Test
+    @MainActor
+    func clickingTheStatusItemLeavesDismissalToItsToggleAction() {
+        // A status item can be on a display to the left of the main display.
+        let frame = NSRect(x: -600, y: 980, width: 180, height: 24)
+        let pointer = NSPoint(x: -500, y: 990)
+        #expect(StatusItemController.shouldDeferPopoverDismissal(
+            mouseLocation: pointer, statusItemFrame: frame, isMouseDown: true
+        ))
+        // Switching apps with the keyboard must close even if the mouse still rests on the icon.
+        #expect(!StatusItemController.shouldDeferPopoverDismissal(
+            mouseLocation: pointer, statusItemFrame: frame, isMouseDown: false
+        ))
+    }
+
+    @Test
+    @MainActor
+    func outsideClicksAndUnavailableStatusItemsDoNotBlockDismissal() {
+        let frame = NSRect(x: 900, y: 980, width: 180, height: 24)
+        #expect(!StatusItemController.shouldDeferPopoverDismissal(
+            mouseLocation: NSPoint(x: 1100, y: 990), statusItemFrame: frame, isMouseDown: true
+        ))
+        #expect(!StatusItemController.shouldDeferPopoverDismissal(
+            mouseLocation: NSPoint(x: 950, y: 500), statusItemFrame: frame, isMouseDown: true
+        ))
+        #expect(!StatusItemController.shouldDeferPopoverDismissal(
+            mouseLocation: NSPoint(x: 950, y: 990), statusItemFrame: nil, isMouseDown: true
+        ))
+    }
+
+    @Test
     func statusItemLabelFallsBackWhenProviderTextsAreMissingOrBlank() {
         #expect(StatusItemLabelView.resolvedFallbackText(claudeText: nil, codexText: nil) == "AIPace")
         #expect(StatusItemLabelView.resolvedFallbackText(claudeText: " ", codexText: "\n") == "AIPace")
@@ -20,12 +50,15 @@ struct StatusItemControllerTests {
     }
 
     @Test
-    func unfocusedColorsDefaultToBlackAndSupportOverrides() {
-        let defaultAccent = StatusItemAppearance.unfocusedAccent(from: nil)
-        let customAccent = StatusItemAppearance.unfocusedAccent(from: "#123ABC")
+    func unfocusedColorsHaveProviderDefaultsAndSupportOverrides() {
+        let claudeAccent = StatusItemAppearance.unfocusedAccent(for: .claude)
+        let codexAccent = StatusItemAppearance.unfocusedAccent(for: .codex, from: "invalid")
+        let customAccent = StatusItemAppearance.unfocusedAccent(for: .claude, from: "#123ABC")
 
-        #expect(AppColorHex.string(from: defaultAccent) == "#000000")
+        #expect(AppColorHex.string(from: claudeAccent) == "#3F1E17")
+        #expect(AppColorHex.string(from: codexAccent) == "#14263F")
         #expect(AppColorHex.string(from: customAccent) == "#123ABC")
+        #expect(AppColorHex.string(from: StatusItemAppearance.unfocusedAccent(for: .codex, from: "#000000")) == "#000000")
     }
 
     @Test

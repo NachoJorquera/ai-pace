@@ -16,6 +16,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
     private let logger = Logger(subsystem: "com.aipace.app", category: "StatusItem")
     private var popoverHostingController: NSHostingController<MenuContentView>?
     private var globalClickMonitor: Any?
+    private var escapeKeyMonitor: Any?
     private var appDeactivationObserver: NSObjectProtocol?
     private var lifecycleObservers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
     private var cancellables = Set<AnyCancellable>()
@@ -203,7 +204,9 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
     }
 
     private func configurePopover() {
-        popover.behavior = .semitransient
+        // AppKit's semitransient behavior can close on mouse-down in the positioning window,
+        // before the status button's mouse-up action runs and reopens it. Own dismissal instead.
+        popover.behavior = .applicationDefined
         popover.animates = false
         popover.delegate = self
         let hostingController = NSHostingController(
@@ -217,9 +220,9 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
     }
 
     private func bindStore() {
-        Publishers.CombineLatest(store.$claude, store.$codex)
+        Publishers.CombineLatest3(store.$claude, store.$codex, store.$usageDisplayPreferences)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _, _ in
+            .sink { [weak self] _, _, _ in
                 self?.updateButtonTitle()
                 self?.updatePopoverLayout()
             }
@@ -230,6 +233,15 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
             .sink { [weak self] _ in
                 self?.updateButtonTitle()
                 self?.updatePopoverLayout()
+            }
+            .store(in: &cancellables)
+
+        // Recalculate countdowns locally even when provider refresh is set to Manual.
+        Timer.publish(every: 60, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard UserDefaults.standard.bool(forKey: UsageResetTime.showInMenuBarDefaultsKey) else { return }
+                self?.updateButtonTitle()
             }
             .store(in: &cancellables)
     }
@@ -284,13 +296,24 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
         ) ?? .usage
         let claudeStatus = store.agentStatus(for: .claude)
         let codexStatus = store.agentStatus(for: .codex)
-        let claudeName = ProviderDisplayName.displayName(for: .claude)
-        let codexName = ProviderDisplayName.displayName(for: .codex)
+        let claudeName = ProviderDisplayName.menuBarName(for: .claude)
+        let codexName = ProviderDisplayName.menuBarName(for: .codex)
+        let showResetTime = UserDefaults.standard.bool(forKey: UsageResetTime.showInMenuBarDefaultsKey)
         let claudeText = claudeStatus.availability.showsInPopover
-            ? StatusItemFormatter.text(prefix: claudeName, snapshot: store.claude, mode: displayMode)
+            ? StatusItemFormatter.text(
+                prefix: claudeName,
+                snapshot: store.usageDisplayPreferences.filtered(store.claude, for: .menuBar),
+                mode: displayMode,
+                showResetTime: showResetTime
+            )
             : nil
         let codexText = codexStatus.availability.showsInPopover
-            ? StatusItemFormatter.text(prefix: codexName, snapshot: store.codex, mode: displayMode)
+            ? StatusItemFormatter.text(
+                prefix: codexName,
+                snapshot: store.usageDisplayPreferences.filtered(store.codex, for: .menuBar),
+                mode: displayMode,
+                showResetTime: showResetTime
+            )
             : nil
 
         let usesFallbackLabel = StatusItemLabelView.resolvedFallbackText(claudeText: claudeText, codexText: codexText) != nil
@@ -305,11 +328,13 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
             theme: resolvedTheme,
             usesUnfocusedColors: usesUnfocusedColors,
             unfocusedClaudeAccent: StatusItemAppearance.unfocusedAccent(
+                for: .claude,
                 from: UserDefaults.standard.string(
                     forKey: StatusItemAppearance.unfocusedClaudeAccentDefaultsKey
                 )
             ),
             unfocusedCodexAccent: StatusItemAppearance.unfocusedAccent(
+                for: .codex,
                 from: UserDefaults.standard.string(
                     forKey: StatusItemAppearance.unfocusedCodexAccentDefaultsKey
                 )
@@ -446,9 +471,31 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
     private func startPopoverDismissMonitoring() {
         if globalClickMonitor == nil {
             globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.closePopover()
+                // AppKit invokes event monitors on the main thread. Decide during this event,
+                // rather than enqueueing a close that could run after a later click opens the menu.
+                MainActor.assumeIsolated {
+                    guard let self,
+                          !Self.shouldDeferPopoverDismissal(
+                            mouseLocation: NSEvent.mouseLocation,
+                            statusItemFrame: self.statusItemScreenFrame,
+                            isMouseDown: true
+                          ) else {
+                        return
+                    }
+                    self.closePopover()
                 }
+            }
+        }
+
+        if escapeKeyMonitor == nil {
+            escapeKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard event.keyCode == 53 else { return event }
+                let handled = MainActor.assumeIsolated {
+                    guard let self, self.popover.isShown else { return false }
+                    self.closePopover()
+                    return true
+                }
+                return handled ? nil : event
             }
         }
 
@@ -458,17 +505,41 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.closePopover()
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    // A click on our icon belongs to its action, even if macOS deactivates us first.
+                    // Keyboard app switching still dismisses when the pointer happens to rest here.
+                    guard !Self.shouldDeferPopoverDismissal(
+                        mouseLocation: NSEvent.mouseLocation,
+                        statusItemFrame: self.statusItemScreenFrame,
+                        isMouseDown: NSEvent.pressedMouseButtons & 0b11 != 0
+                    ) else { return }
+                    self.closePopover()
                 }
             }
         }
+    }
+
+    private var statusItemScreenFrame: NSRect? {
+        guard let button = statusItem?.button, let window = button.window else { return nil }
+        return window.convertToScreen(button.convert(button.bounds, to: nil))
+    }
+
+    static func shouldDeferPopoverDismissal(
+        mouseLocation: NSPoint, statusItemFrame: NSRect?, isMouseDown: Bool
+    ) -> Bool {
+        isMouseDown && (statusItemFrame?.contains(mouseLocation) ?? false)
     }
 
     private func stopPopoverDismissMonitoring() {
         if let globalClickMonitor {
             NSEvent.removeMonitor(globalClickMonitor)
             self.globalClickMonitor = nil
+        }
+
+        if let escapeKeyMonitor {
+            NSEvent.removeMonitor(escapeKeyMonitor)
+            self.escapeKeyMonitor = nil
         }
 
         if let appDeactivationObserver {

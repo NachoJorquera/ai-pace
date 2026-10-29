@@ -7,15 +7,20 @@ The format is based on Keep a Changelog, and this project follows semantic versi
 ## [Unreleased]
 
 ### Added
+- Optional time until reset beside each selected quota in the menu bar, recalculated locally every minute even with manual provider refresh
+- Checkbox to the right of each agent's name field to show or hide its menu bar identifier independently, keeping the saved custom name
+- Usage section below Agents in Settings, with a switch per quota for the menu bar and popover; the popover can follow the menu bar selection or be configured independently, and selections persist across launches
+- Claude usage supports Opus/Sonnet weekly quotas from older responses, OAuth apps and Cowork weekly quotas, and enabled extra-usage budget percentages when the provider returns them; model quotas are listed individually using the provider's names
 - Updates section at the end of Settings: shows the running version, checks the project's GitHub releases on demand, and reports that you are on the latest version when there is nothing newer
 - When a newer release exists, its DMG can be downloaded from inside the app to the Downloads folder, with progress and SHA-256 verification against the checksum GitHub publishes; installing it is still a manual drag into Applications
-- Dark mode when not focused: an option under Colors in Settings that paints the menu bar pills with their own Claude and Codex colors (black by default) while the popover is closed, and returns to the theme colors while it is open
+- Dark mode when not focused: an option under Colors in Settings that paints the menu bar pills with their own Claude and Codex colors (`#3F1E17` and `#14263F` by default) while the popover is closed, and returns to the theme colors while it is open
 
 ### Changed
 - The app reads your shell's PATH once per launch instead of three times per refresh. Each read starts an interactive shell that takes about a second, and Codex waited for two of them before it could start
 - Claude and Codex each appear as soon as their own usage loads, instead of both waiting for the slower one
 
 ### Fixed
+- Clicking the menu bar icon again closes the usage popover instead of reopening it after an automatic mouse-down dismissal; outside clicks, app switching and Escape still dismiss it
 - Local launches no longer open an empty "AIPace Settings" window; settings use the existing Options window only
 - The menu bar popover fits all reported usage windows and its footer controls, scrolling the provider cards when screen space is limited
 - Codex usage loads again with current codex-cli releases, which reject the `untrusted` approval policy and made Settings show "Codex app-server closed before returning response id 1." The app-server now starts with `never`
