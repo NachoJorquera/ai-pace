@@ -10,10 +10,12 @@ struct StatusItemRepairDebouncerTests {
         let debouncer = StatusItemRepairDebouncer(delay: .milliseconds(10)) { reason in
             reasons.append(reason)
         }
+        defer { debouncer.cancel() }
 
         debouncer.schedule(reason: .wake)
 
-        try? await Task.sleep(for: .milliseconds(40))
+        let didRepair = await waitUntil { @MainActor in !reasons.isEmpty }
+        #expect(didRepair)
         #expect(reasons == [.wake])
     }
 
@@ -23,11 +25,13 @@ struct StatusItemRepairDebouncerTests {
         let debouncer = StatusItemRepairDebouncer(delay: .milliseconds(40)) { reason in
             reasons.append(reason)
         }
+        defer { debouncer.cancel() }
 
         debouncer.schedule(reason: .wake)
         debouncer.schedule(reason: .displayChange)
 
-        try? await Task.sleep(for: .milliseconds(90))
+        let didRepair = await waitUntil { @MainActor in !reasons.isEmpty }
+        #expect(didRepair)
         #expect(reasons == [.displayChange])
     }
 

@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project follows semantic versi
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-29
+
 ### Added
 - Optional time until reset beside each selected quota in the menu bar, recalculated locally every minute even with manual provider refresh
 - Checkbox to the right of each agent's name field to show or hide its menu bar identifier independently, keeping the saved custom name
