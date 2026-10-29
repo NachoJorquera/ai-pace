@@ -206,18 +206,14 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
         popover.behavior = .semitransient
         popover.animates = false
         popover.delegate = self
-        let size = popoverSize()
-        popover.contentSize = size
-
         let hostingController = NSHostingController(
-            rootView: MenuContentView(store: store, openSettings: openSettings, popoverHeight: size.height)
+            rootView: MenuContentView(store: store, openSettings: openSettings)
         )
         hostingController.sizingOptions = []
-        hostingController.view.frame = NSRect(origin: .zero, size: size)
-        hostingController.preferredContentSize = size
 
         popoverHostingController = hostingController
         popover.contentViewController = hostingController
+        updatePopoverLayout()
     }
 
     private func bindStore() {
@@ -334,7 +330,15 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
             return
         }
 
-        let size = popoverSize()
+        // Measure SwiftUI's actual layout: providers can report any number of usage windows.
+        // Leave room for the popover arrow and screen edges on the display hosting the status item.
+        hostingController.rootView = MenuContentView(store: store, openSettings: openSettings)
+        let screen = statusItem?.button?.window?.screen ?? NSScreen.main
+        let maximumHeight = max(1, (screen?.visibleFrame.height ?? 640) - 24)
+        let fittedSize = hostingController.sizeThatFits(
+            in: NSSize(width: popoverWidth, height: maximumHeight)
+        )
+        let size = NSSize(width: popoverWidth, height: min(ceil(fittedSize.height), maximumHeight))
         guard popover.contentSize != size || hostingController.preferredContentSize != size else {
             return
         }
@@ -342,30 +346,6 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
         popover.contentSize = size
         hostingController.preferredContentSize = size
         hostingController.view.setFrameSize(size)
-        hostingController.rootView = MenuContentView(
-            store: store,
-            openSettings: openSettings,
-            popoverHeight: size.height
-        )
-    }
-
-    private func popoverSize() -> NSSize {
-        NSSize(width: popoverWidth, height: popoverHeight())
-    }
-
-    private func popoverHeight() -> CGFloat {
-        Self.popoverHeight(forVisibleSnapshotCount: store.visibleSnapshots.count)
-    }
-
-    static func popoverHeight(forVisibleSnapshotCount count: Int) -> CGFloat {
-        switch count {
-        case 0:
-            return 220
-        case 1:
-            return 250
-        default:
-            return 380
-        }
     }
 
     static func statusItemLength(forContentWidth width: CGFloat) -> CGFloat {
@@ -408,6 +388,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
         }
 
         NSApp.activate(ignoringOtherApps: true)
+        updatePopoverLayout()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         updateButtonTitle()
         startPopoverDismissMonitoring()

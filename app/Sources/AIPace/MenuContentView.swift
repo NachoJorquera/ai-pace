@@ -6,7 +6,6 @@ import SwiftUI
 struct MenuContentView: View {
     @ObservedObject var store: UsageStore
     let openSettings: () -> Void
-    let popoverHeight: CGFloat
     @AppStorage("selectedTheme") private var selectedThemeID = AppTheme.defaultTheme.id
     @AppStorage(AppTheme.customClaudeAccentDefaultsKey) private var customClaudeAccentHex = ""
     @AppStorage(AppTheme.customCodexAccentDefaultsKey) private var customCodexAccentHex = ""
@@ -25,8 +24,22 @@ struct MenuContentView: View {
     private let popoverWidth: CGFloat = 440
 
     var body: some View {
-        let visibleSnapshots = store.visibleSnapshots
+        // Prefer the full content height. On shorter screens, keep the controls visible and scroll the cards.
+        ViewThatFits(in: .vertical) {
+            content(scrollsCards: false)
+                .fixedSize(horizontal: false, vertical: true)
+            content(scrollsCards: true)
+        }
+        .frame(width: popoverWidth)
+        .transaction { transaction in
+            transaction.animation = nil
+        }
+        .task {
+            await store.refreshNotificationAuthorizationState()
+        }
+    }
 
+    private func content(scrollsCards: Bool) -> some View {
         VStack(spacing: 0) {
             // Header
             HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -40,21 +53,13 @@ struct MenuContentView: View {
             .padding(.bottom, 14)
 
             // Provider cards
-            VStack(spacing: 8) {
-                if visibleSnapshots.isEmpty {
-                    EmptyAgentsCard(loc: loc, openSettings: openSettings)
-                } else {
-                    ForEach(visibleSnapshots, id: \.provider.rawValue) { snapshot in
-                        ProviderCard(
-                            snapshot: snapshot,
-                            store: store,
-                            accent: accent(for: snapshot.provider),
-                            lang: lang
-                        )
-                    }
+            if scrollsCards {
+                ScrollView {
+                    providerCards
                 }
+            } else {
+                providerCards
             }
-            .padding(.horizontal, 20)
 
             // Footer
             HStack {
@@ -93,14 +98,26 @@ struct MenuContentView: View {
             .padding(.top, 10)
             .padding(.bottom, 14)
         }
-        .frame(width: popoverWidth)
-        .frame(height: popoverHeight, alignment: .top)
-        .transaction { transaction in
-            transaction.animation = nil
+    }
+
+    private var providerCards: some View {
+        let visibleSnapshots = store.visibleSnapshots
+
+        return VStack(spacing: 8) {
+            if visibleSnapshots.isEmpty {
+                EmptyAgentsCard(loc: loc, openSettings: openSettings)
+            } else {
+                ForEach(visibleSnapshots, id: \.provider.rawValue) { snapshot in
+                    ProviderCard(
+                        snapshot: snapshot,
+                        store: store,
+                        accent: accent(for: snapshot.provider),
+                        lang: lang
+                    )
+                }
+            }
         }
-        .task {
-            await store.refreshNotificationAuthorizationState()
-        }
+        .padding(.horizontal, 20)
     }
 
     private func accent(for provider: ProviderKind) -> Color {

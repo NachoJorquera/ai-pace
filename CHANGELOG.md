@@ -16,6 +16,8 @@ The format is based on Keep a Changelog, and this project follows semantic versi
 - Claude and Codex each appear as soon as their own usage loads, instead of both waiting for the slower one
 
 ### Fixed
+- Local launches no longer open an empty "AIPace Settings" window; settings use the existing Options window only
+- The menu bar popover fits all reported usage windows and its footer controls, scrolling the provider cards when screen space is limited
 - Codex usage loads again with current codex-cli releases, which reject the `untrusted` approval policy and made Settings show "Codex app-server closed before returning response id 1." The app-server now starts with `never`
 - Claude and Codex no longer stay on "Checking…" forever when the app is launched from a terminal. The shell that reads your PATH was stopped by the system while trying to take over the terminal; it now runs without job control and is abandoned after 10 seconds
 - A Codex app-server that never answers no longer stops refreshes for both providers. It is stopped after 30 seconds and Settings shows "Codex app-server did not respond within 30 seconds."
