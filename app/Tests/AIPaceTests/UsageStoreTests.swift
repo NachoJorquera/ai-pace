@@ -338,7 +338,9 @@ struct UsageStoreTests {
         let initialRefresh = await waitUntil {
             let claudeCalls = await claudeCounter.value()
             let codexCalls = await codexCounter.value()
-            return claudeCalls == 1 && codexCalls == 1
+            // Probe counts advance before refresh() finishes publishing both snapshots.
+            let isRefreshing = await store.isRefreshing
+            return claudeCalls == 1 && codexCalls == 1 && !isRefreshing
         }
         #expect(initialRefresh)
 
