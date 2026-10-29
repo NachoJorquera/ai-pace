@@ -4,6 +4,54 @@ import Testing
 
 struct ClaudeProbeTests {
     @Test
+    func decodesAdditionalQuotasWithoutDuplicatingModelLimits() throws {
+        let json = """
+        {"five_hour":{"utilization":14},"seven_day":{"utilization":20},
+         "seven_day_opus":{"utilization":25,"resets_at":"2026-11-03T10:00:00Z"},
+         "seven_day_sonnet":{"utilization":35},
+         "seven_day_oauth_apps":{"utilization":45},"seven_day_cowork":{"utilization":55},
+         "extra_usage":{"is_enabled":true,"utilization":65,"monthly_limit":1000,"used_credits":650},
+         "limits":[
+           {"kind":"weekly_scoped","percent":15,"scope":{"model":{"display_name":"Fable"}}},
+           {"kind":"weekly_scoped","percent":5,"scope":{"model":{"display_name":"Opus"}}}
+         ]}
+        """
+        let response = try JSONDecoder().decode(ClaudeUsageResponse.self, from: Data(json.utf8))
+        let windows = ClaudeProbe().additionalWindows(from: response)
+
+        #expect(windows.map(\.kind) == [.scopedWeekly, .scopedWeekly, .scopedWeekly, .oauthAppsWeekly, .coworkWeekly, .extraUsage])
+        #expect(windows.map(\.usedPercentage) == [15, 5, 35, 45, 55, 65])
+        #expect(windows.prefix(3).map(\.label) == ["Fable", "Opus", "Sonnet"])
+        #expect(windows.last?.resetsAt == nil)
+    }
+
+    @Test
+    func malformedOptionalQuotasDoNotHideWorkingUsage() throws {
+        let json = """
+        {"five_hour":{"utilization":14},"seven_day":{"utilization":20},
+         "seven_day_opus":{"utilization":"unexpected"},"seven_day_sonnet":null,
+         "seven_day_oauth_apps":{},"seven_day_cowork":false,"extra_usage":{"is_enabled":"invalid"}}
+        """
+        let response = try JSONDecoder().decode(ClaudeUsageResponse.self, from: Data(json.utf8))
+        #expect(response.fiveHour?.utilization == 14)
+        #expect(response.sevenDay?.utilization == 20)
+        #expect(ClaudeProbe().additionalWindows(from: response).isEmpty)
+    }
+
+    @Test
+    func extraUsageRequiresAnEnabledMeasurableBudget() {
+        func windows(_ extra: ClaudeExtraUsageData) -> [UsageWindow] {
+            ClaudeProbe().additionalWindows(from: ClaudeUsageResponse(fiveHour: nil, sevenDay: nil, extraUsage: extra))
+        }
+        #expect(windows(ClaudeExtraUsageData(isEnabled: false, utilization: 50, monthlyLimit: 100, usedCredits: 50)).isEmpty)
+        #expect(windows(ClaudeExtraUsageData(isEnabled: true, utilization: nil, monthlyLimit: 0, usedCredits: 50)).isEmpty)
+        #expect(windows(ClaudeExtraUsageData(isEnabled: true, utilization: nil, monthlyLimit: nil, usedCredits: nil)).isEmpty)
+        let calculated = windows(ClaudeExtraUsageData(isEnabled: true, utilization: nil, monthlyLimit: 100, usedCredits: 25))
+        #expect(calculated.first?.usedPercentage == 25)
+        #expect(windows(ClaudeExtraUsageData(isEnabled: true, utilization: 0, monthlyLimit: 100, usedCredits: 0)).first?.usedPercentage == 0)
+    }
+
+    @Test
     func fetchReturnsUsageSnapshotAndDetailText() async throws {
         let homeDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: homeDirectory) }

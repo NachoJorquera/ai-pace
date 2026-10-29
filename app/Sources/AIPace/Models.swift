@@ -1,6 +1,6 @@
 import Foundation
 
-enum ProviderKind: String {
+enum ProviderKind: String, Codable {
     case claude = "Claude"
     case codex = "Codex"
 }
@@ -9,6 +9,14 @@ enum ProviderDisplayName {
     static let maxLength = 7
     static let customClaudeNameDefaultsKey = "customClaudeName"
     static let customCodexNameDefaultsKey = "customCodexName"
+    static let showClaudeNameDefaultsKey = "showClaudeName"
+    static let showCodexNameDefaultsKey = "showCodexName"
+
+    static func menuBarName(for provider: ProviderKind, userDefaults: UserDefaults = .standard) -> String {
+        let key = provider == .claude ? showClaudeNameDefaultsKey : showCodexNameDefaultsKey
+        let visible = userDefaults.object(forKey: key) as? Bool ?? true
+        return visible ? displayName(for: provider, userDefaults: userDefaults) : ""
+    }
 
     static func defaultsKey(for provider: ProviderKind) -> String {
         switch provider {
@@ -43,12 +51,15 @@ enum ProviderDisplayName {
     }
 }
 
-enum UsageWindowKind: String {
+enum UsageWindowKind: String, Codable {
     case fiveHour = "5h"
     case weekly = "Week"
     /// A weekly window scoped to a single model. Its display label comes from the provider, so the
     /// kind carries no model name of its own.
     case scopedWeekly = "Model"
+    case oauthAppsWeekly = "OAuth apps"
+    case coworkWeekly = "Cowork"
+    case extraUsage = "Extra"
 }
 
 enum AgentAvailability: Equatable {
@@ -193,8 +204,8 @@ struct UsageWindow: Identifiable {
 }
 
 /// Holds however many windows a provider reports. Providers change how many quotas they expose, so
-/// the count is data, not structure: Codex reports one weekly window, Claude reports two plus an
-/// optional model-scoped one.
+/// the count is data, not structure: Codex can report a single weekly window, while Claude also has
+/// model-scoped quotas and optional surface or extra-usage limits.
 struct ProviderSnapshot {
     let provider: ProviderKind
     var windows: [UsageWindow]

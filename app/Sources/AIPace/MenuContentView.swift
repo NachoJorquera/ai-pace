@@ -109,7 +109,7 @@ struct MenuContentView: View {
             } else {
                 ForEach(visibleSnapshots, id: \.provider.rawValue) { snapshot in
                     ProviderCard(
-                        snapshot: snapshot,
+                        snapshot: store.usageDisplayPreferences.filtered(snapshot, for: .popover),
                         store: store,
                         accent: accent(for: snapshot.provider),
                         lang: lang
@@ -222,6 +222,11 @@ private struct ProviderCard: View {
             ForEach(snapshot.windows) { window in
                 UsageRow(window: window, provider: snapshot.provider, store: store, accent: accent, lang: lang)
             }
+            if snapshot.windows.isEmpty {
+                Text(Loc(lang: lang).noUsageSelected)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -292,6 +297,9 @@ private struct UsageRow: View {
                 .disabled(notificationsDisabledInSystem)
                 .pointerOnHover()
                 .padding(.leading, 4)
+                .opacity(window.kind == .extraUsage ? 0 : 1)
+                .disabled(window.kind == .extraUsage)
+                .accessibilityHidden(window.kind == .extraUsage)
 
                 Text(window.label ?? loc.windowLabel(window.kind))
                     .font(.system(size: 14, weight: .medium))
@@ -313,7 +321,7 @@ private struct UsageRow: View {
 
                 Group {
                     if let resetsAt = window.resetsAt {
-                        Text(formatReset(resetsAt))
+                        Text(UsageResetTime.formatted(until: resetsAt))
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundStyle(.tertiary)
                     }
@@ -338,19 +346,6 @@ private struct UsageRow: View {
         }
     }
 
-    private func formatReset(_ date: Date) -> String {
-        let secs = max(0, Int(date.timeIntervalSinceNow.rounded(.down)))
-        if secs < 60 { return "<1m" }
-        let tot = secs / 60
-        let d = tot / 1440
-        let h = (tot % 1440) / 60
-        let m = tot % 60
-        var p: [String] = []
-        if d > 0 { p.append("\(d)d") }
-        if h > 0 || d > 0 { p.append("\(h)h") }
-        p.append(String(format: "%02dm", m))
-        return p.joined(separator: " ")
-    }
 }
 
 private struct FlashingDot: View {
@@ -413,6 +408,8 @@ struct SettingsView: View {
     @AppStorage(StatusItemAppearance.unfocusedCodexAccentDefaultsKey) private var unfocusedCodexAccentHex = ""
     @AppStorage(ProviderDisplayName.customClaudeNameDefaultsKey) private var customClaudeName = ""
     @AppStorage(ProviderDisplayName.customCodexNameDefaultsKey) private var customCodexName = ""
+    @AppStorage(ProviderDisplayName.showClaudeNameDefaultsKey) private var showClaudeName = true
+    @AppStorage(ProviderDisplayName.showCodexNameDefaultsKey) private var showCodexName = true
     @AppStorage("appLanguage") private var langID = AppLanguage.english.rawValue
     @AppStorage("menuBarDisplayMode") private var menuBarDisplayModeID = MenuBarDisplayMode.usage.rawValue
     @AppStorage("popoverDisplayMode") private var popoverDisplayModeID = PopoverDisplayMode.usage.rawValue
@@ -512,13 +509,19 @@ struct SettingsView: View {
 
             settingsCard(title: loc.agents) {
                 settingRow(loc.claudeName) {
-                    AgentNameField(customName: $customClaudeName, provider: .claude)
+                    AgentNameField(
+                        customName: $customClaudeName, showsIdentifier: $showClaudeName,
+                        provider: .claude, toggleLabel: loc.showAgentIdentifier
+                    )
                 }
 
                 Divider()
 
                 settingRow(loc.codexName) {
-                    AgentNameField(customName: $customCodexName, provider: .codex)
+                    AgentNameField(
+                        customName: $customCodexName, showsIdentifier: $showCodexName,
+                        provider: .codex, toggleLabel: loc.showAgentIdentifier
+                    )
                 }
 
                 Text(loc.agentNamesDesc)
@@ -534,6 +537,10 @@ struct SettingsView: View {
                 Divider()
 
                 AgentStatusRow(status: store.agentStatus(for: .codex))
+            }
+
+            settingsCard(title: loc.usage) {
+                UsageSettingsView(store: store, loc: loc)
             }
 
             settingsCard(title: loc.notifications) {
@@ -636,7 +643,7 @@ struct SettingsView: View {
                     settingRow(loc.claudeColor) {
                         AccentColorControl(
                             hexValue: $unfocusedClaudeAccentHex,
-                            fallbackColor: .black,
+                            fallbackColor: StatusItemAppearance.unfocusedAccent(for: .claude),
                             resetLabel: loc.reset
                         )
                     }
@@ -646,7 +653,7 @@ struct SettingsView: View {
                     settingRow(loc.codexColor) {
                         AccentColorControl(
                             hexValue: $unfocusedCodexAccentHex,
-                            fallbackColor: .black,
+                            fallbackColor: StatusItemAppearance.unfocusedAccent(for: .codex),
                             resetLabel: loc.reset
                         )
                     }
@@ -739,18 +746,28 @@ struct SettingsView: View {
 
 private struct AgentNameField: View {
     @Binding var customName: String
+    @Binding var showsIdentifier: Bool
     let provider: ProviderKind
+    let toggleLabel: String
 
     var body: some View {
-        TextField(
-            ProviderDisplayName.defaultName(for: provider),
-            text: Binding(
-                get: { ProviderDisplayName.sanitizedInput(customName) },
-                set: { customName = ProviderDisplayName.sanitizedInput($0) }
+        HStack(spacing: 8) {
+            TextField(
+                ProviderDisplayName.defaultName(for: provider),
+                text: Binding(
+                    get: { ProviderDisplayName.sanitizedInput(customName) },
+                    set: { customName = ProviderDisplayName.sanitizedInput($0) }
+                )
             )
-        )
-        .textFieldStyle(.roundedBorder)
-        .font(.system(size: 12))
+            .textFieldStyle(.roundedBorder)
+            .font(.system(size: 12))
+
+            Toggle(toggleLabel, isOn: $showsIdentifier)
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .accessibilityLabel("\(provider.rawValue): \(toggleLabel)")
+                .help(toggleLabel)
+        }
         .frame(width: 180)
     }
 }
@@ -782,7 +799,7 @@ private struct AccentColorControl: View {
             .labelsHidden()
             .frame(width: 32)
 
-            TextField("#F26B1D", text: $draftHex)
+            TextField(AppColorHex.string(from: fallbackColor) ?? "#F26B1D", text: $draftHex)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 12, design: .monospaced))
                 .frame(width: 96)

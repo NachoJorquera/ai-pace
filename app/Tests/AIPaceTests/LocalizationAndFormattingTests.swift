@@ -4,6 +4,59 @@ import Testing
 
 struct LocalizationAndFormattingTests {
     @Test
+    func resetCountdownHandlesMinutesDaysAndExpiredWindows() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        #expect(UsageResetTime.formatted(until: now.addingTimeInterval(45), now: now) == "<1m")
+        #expect(UsageResetTime.formatted(until: now.addingTimeInterval(60), now: now) == "01m")
+        #expect(UsageResetTime.formatted(until: now.addingTimeInterval(7_800), now: now) == "2h 10m")
+        #expect(UsageResetTime.formatted(until: now.addingTimeInterval(183_600), now: now) == "2d 3h 00m")
+        #expect(UsageResetTime.formatted(until: now, now: now) == "0m")
+        #expect(UsageResetTime.formatted(until: now.addingTimeInterval(-120), now: now) == "0m")
+    }
+
+    @Test
+    func resetTimeIsOptionalAndFollowsEachVisibleQuota() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let snapshot = makeSnapshot(.claude, windows: [
+            makeWindow(.fiveHour, used: 12, resetsAt: now.addingTimeInterval(7_800)),
+            makeWindow(.weekly, used: 20, resetsAt: now.addingTimeInterval(302_400)),
+            makeWindow(.extraUsage, used: 5),
+        ])
+        #expect(StatusItemFormatter.text(prefix: "Cl", snapshot: snapshot, mode: .usage, now: now) == "Cl 12/20/5")
+        #expect(StatusItemFormatter.text(prefix: "", snapshot: snapshot, mode: .usage, showResetTime: true, now: now) == "12 (2h 10m)/20 (3d 12h 00m)/5")
+        #expect(StatusItemFormatter.text(prefix: "Cl", snapshot: snapshot, mode: .remaining, showResetTime: true, now: now) == "Cl 88 (2h 10m)/80 (3d 12h 00m)/95")
+        #expect(StatusItemFormatter.text(prefix: "Cl", snapshot: snapshot, mode: .insight, showResetTime: true, now: now) == "Cl +30% (3d 12h 00m)")
+        #expect(StatusItemFormatter.text(prefix: "Cl", snapshot: snapshot, mode: .usageAndInsight, showResetTime: true, now: now) == "Cl 12 (2h 10m)/20 (3d 12h 00m)/5 +30%")
+        #expect(StatusItemFormatter.text(prefix: "Cl", snapshot: snapshot, mode: .remainingAndInsight, showResetTime: true, now: now) == "Cl 88 (2h 10m)/80 (3d 12h 00m)/95 +30%")
+
+        var preferences = UsageDisplayPreferences()
+        preferences.setVisible(false, metric: UsageMetric(provider: .claude, kind: .weekly), in: .menuBar)
+        let filtered = preferences.filtered(snapshot, for: .menuBar)
+        #expect(StatusItemFormatter.text(prefix: "", snapshot: filtered, mode: .usage, showResetTime: true, now: now) == "12 (2h 10m)/5")
+        #expect(StatusItemFormatter.text(prefix: "", snapshot: filtered, mode: .insight, showResetTime: true, now: now).isEmpty)
+        // The countdown changes without fetching a new snapshot.
+        #expect(StatusItemFormatter.text(prefix: "", snapshot: filtered, mode: .usage, showResetTime: true, now: now.addingTimeInterval(60)) == "12 (2h 09m)/5")
+    }
+
+    @Test
+    func providerIdentifiersCanBeHiddenIndependentlyWithoutLosingCustomNames() {
+        let suite = "AIPaceTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        #expect(ProviderDisplayName.menuBarName(for: .claude, userDefaults: defaults) == "Cl")
+        #expect(ProviderDisplayName.menuBarName(for: .codex, userDefaults: defaults) == "Cx")
+        defaults.set("Work", forKey: ProviderDisplayName.customClaudeNameDefaultsKey)
+        defaults.set(false, forKey: ProviderDisplayName.showClaudeNameDefaultsKey)
+        #expect(ProviderDisplayName.menuBarName(for: .claude, userDefaults: defaults).isEmpty)
+        #expect(ProviderDisplayName.menuBarName(for: .codex, userDefaults: defaults) == "Cx")
+        #expect(ProviderDisplayName.displayName(for: .claude, userDefaults: defaults) == "Work")
+        defaults.set(true, forKey: ProviderDisplayName.showClaudeNameDefaultsKey)
+        #expect(ProviderDisplayName.menuBarName(for: .claude, userDefaults: defaults) == "Work")
+        #expect(StatusItemFormatter.text(prefix: "", snapshot: makeSnapshot(.claude, windows: []), mode: .usage).isEmpty)
+        #expect(StatusItemLabelView.resolvedFallbackText(claudeText: "", codexText: "") == "AIPace")
+    }
+
+    @Test
     func localizationMapsWindowLabelsAndLoadingMessages() {
         let korean = Loc(lang: .korean)
 
@@ -74,7 +127,7 @@ struct LocalizationAndFormattingTests {
         let empty = makeSnapshot(.codex, windows: [])
 
         #expect(StatusItemFormatter.text(prefix: "Cx", snapshot: empty, mode: .usage) == "Cx")
-        #expect(StatusItemFormatter.text(prefix: "Cx", snapshot: empty, mode: .insight) == "Cx --")
+        #expect(StatusItemFormatter.text(prefix: "Cx", snapshot: empty, mode: .insight) == "Cx")
     }
 
     @Test

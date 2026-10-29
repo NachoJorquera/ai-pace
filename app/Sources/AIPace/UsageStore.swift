@@ -20,6 +20,7 @@ final class UsageStore: ObservableObject {
     @Published private(set) var notificationsDisabledInSystem = false
     @Published private(set) var launchAtStartupState: LaunchAtStartupState
     @Published private(set) var launchAtStartupErrorMessage: String?
+    @Published private(set) var usageDisplayPreferences: UsageDisplayPreferences
 
     private let claudeProbe: any ProviderSnapshotFetching
     private let codexProbe: any ProviderSnapshotFetching
@@ -45,6 +46,7 @@ final class UsageStore: ObservableObject {
         self.notificationManager = notificationManager
         self.launchAtStartupManager = launchAtStartupManager
         self.userDefaults = userDefaults
+        usageDisplayPreferences = UsageDisplayPreferences.load(from: userDefaults)
         refreshNotificationKeys = Set(userDefaults.stringArray(forKey: refreshNotificationDefaultsKey) ?? [])
         let storedInterval = userDefaults.integer(forKey: autoRefreshIntervalDefaultsKey)
         autoRefreshInterval = AutoRefreshInterval(rawValue: storedInterval) ?? .defaultValue
@@ -101,7 +103,29 @@ final class UsageStore: ObservableObject {
             codex = resolved
         }
 
+        if usageDisplayPreferences.discoverMetrics(in: resolved) {
+            usageDisplayPreferences.save(to: userDefaults)
+        }
         await notifyIfWindowRefreshed(previous: previous, current: resolved)
+    }
+
+    func setUsageVisible(_ visible: Bool, metric: UsageMetric, in destination: UsageDisplayDestination) {
+        usageDisplayPreferences.setVisible(visible, metric: metric, in: destination)
+        usageDisplayPreferences.save(to: userDefaults)
+    }
+
+    func setPopoverMatchesMenuBar(_ matches: Bool) {
+        usageDisplayPreferences.setPopoverMatchesMenuBar(matches)
+        usageDisplayPreferences.save(to: userDefaults)
+    }
+
+    func usageMetrics(for provider: ProviderKind) -> [UsageMetric] {
+        let reportedIDs = snapshot(for: provider).windows.map { UsageMetric(provider: provider, window: $0).id }
+        // Match the order of values in the menu bar; keep remembered, currently absent quotas last.
+        return usageDisplayPreferences.knownMetrics.filter { $0.provider == provider }.sorted {
+            (reportedIDs.firstIndex(of: $0.id) ?? reportedIDs.count)
+                < (reportedIDs.firstIndex(of: $1.id) ?? reportedIDs.count)
+        }
     }
 
     func setAutoRefreshInterval(_ interval: AutoRefreshInterval) {
