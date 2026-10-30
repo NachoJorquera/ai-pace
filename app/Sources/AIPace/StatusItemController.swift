@@ -6,7 +6,6 @@ import SwiftUI
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
     private let popoverWidth: CGFloat = 440
-    private static let statusItemLengthPadding: CGFloat = 12
     private static let minimumStatusItemLength: CGFloat = 32
 
     private let store: UsageStore
@@ -374,7 +373,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, NSPopoverDelegate {
     }
 
     static func statusItemLength(forContentWidth width: CGFloat) -> CGFloat {
-        max(width + statusItemLengthPadding, minimumStatusItemLength)
+        max(width, minimumStatusItemLength)
     }
 
     static func rebuildSucceeded(buttonPresent: Bool, hasWindow: Bool) -> Bool {

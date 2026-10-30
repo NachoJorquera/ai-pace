@@ -66,7 +66,7 @@ struct StatusItemControllerTests {
     func statusItemLengthIsClampedToMinimumVisibleWidth() {
         #expect(StatusItemController.statusItemLength(forContentWidth: 0) == 32)
         #expect(StatusItemController.statusItemLength(forContentWidth: 10) == 32)
-        #expect(StatusItemController.statusItemLength(forContentWidth: 40) == 52)
+        #expect(StatusItemController.statusItemLength(forContentWidth: 40) == 40)
     }
 
     @Test
