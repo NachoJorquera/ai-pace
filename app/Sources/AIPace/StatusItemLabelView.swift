@@ -61,7 +61,6 @@ struct StatusItemLabelView: View {
                 )
             }
         }
-        .padding(.horizontal, 4)
         .frame(height: 22)
         .allowsHitTesting(false)
     }
