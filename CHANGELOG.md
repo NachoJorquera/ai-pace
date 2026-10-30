@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project follows semantic versi
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-29
+
 ### Fixed
 - The menu bar item no longer leaves extra empty space on both sides of the usage pills; macOS now spaces it from its neighbors like any other menu bar icon
 
